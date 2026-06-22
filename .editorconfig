@@ -1,0 +1,125 @@
+# Top-most EditorConfig file
+root = true
+
+[*.cs]
+
+# ==========================================
+# Formatting
+# ==========================================
+
+# Default formatting
+indent_style = space
+indent_size = 4
+tab_width = 4
+
+# Line Length
+max_line_length = 120
+
+# Braces: Braces on a new line (Allman style)
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+# Braces: Always use braces, even for single-line blocks
+csharp_prefer_braces = always:warning
+
+# Spacing: Single space after commas, around operators, no space before parenthesis
+csharp_space_after_comma = true
+csharp_space_around_binary_operators = before_and_after
+csharp_space_between_method_declaration_name_and_open_parenthesis = false
+csharp_space_between_method_call_name_and_opening_parenthesis = false
+
+# ==========================================
+# Class & File Structure
+# ==========================================
+
+# using Directives: Place all using directives at the top of the file
+csharp_using_directive_placement = outside_namespace:suggestion
+
+# ==========================================
+# C# Language Guidelines
+# ==========================================
+
+# Fields and Variables: Explicitly declare access modifiers
+dotnet_style_require_accessibility_modifiers = always:warning
+
+# var Keyword: Use var only when the type is explicitly obvious
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# Events: Always use the null-conditional operator for invocation (?.)
+csharp_style_conditional_delegate_call = true:warning
+
+# Properties: Prefer expression-bodied members for concise properties
+csharp_style_expression_bodied_properties = true:suggestion
+
+
+# ==========================================
+# Naming Conventions
+# ==========================================
+
+# --- Style Definitions ---
+
+dotnet_naming_style.pascal_case_style.capitalization = pascal_case
+dotnet_naming_style.camel_case_style.capitalization = camel_case
+
+dotnet_naming_style.interface_style.capitalization = pascal_case
+dotnet_naming_style.interface_style.required_prefix = I
+
+dotnet_naming_style.private_field_style.capitalization = camel_case
+dotnet_naming_style.private_field_style.required_prefix = _
+
+# --- Symbol Definitions ---
+
+dotnet_naming_symbols.classes_and_structs.applicable_kinds = class, struct, enum
+dotnet_naming_symbols.classes_and_structs.applicable_accessibilities = *
+
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_symbols.interfaces.applicable_accessibilities = *
+
+dotnet_naming_symbols.public_protected_fields.applicable_kinds = field
+dotnet_naming_symbols.public_protected_fields.applicable_accessibilities = public, protected
+
+dotnet_naming_symbols.private_internal_fields.applicable_kinds = field
+dotnet_naming_symbols.private_internal_fields.applicable_accessibilities = private, internal
+
+dotnet_naming_symbols.properties.applicable_kinds = property
+dotnet_naming_symbols.properties.applicable_accessibilities = *
+
+dotnet_naming_symbols.methods_and_events.applicable_kinds = method, event
+dotnet_naming_symbols.methods_and_events.applicable_accessibilities = *
+
+dotnet_naming_symbols.locals_and_parameters.applicable_kinds = parameter, local
+dotnet_naming_symbols.locals_and_parameters.applicable_accessibilities = local
+
+# --- Naming Rules ---
+
+dotnet_naming_rule.interfaces_rule.symbols = interfaces
+dotnet_naming_rule.interfaces_rule.style = interface_style
+dotnet_naming_rule.interfaces_rule.severity = warning
+
+dotnet_naming_rule.classes_and_structs_rule.symbols = classes_and_structs
+dotnet_naming_rule.classes_and_structs_rule.style = pascal_case_style
+dotnet_naming_rule.classes_and_structs_rule.severity = warning
+
+dotnet_naming_rule.public_protected_fields_rule.symbols = public_protected_fields
+dotnet_naming_rule.public_protected_fields_rule.style = pascal_case_style
+dotnet_naming_rule.public_protected_fields_rule.severity = warning
+
+dotnet_naming_rule.private_internal_fields_rule.symbols = private_internal_fields
+dotnet_naming_rule.private_internal_fields_rule.style = private_field_style
+dotnet_naming_rule.private_internal_fields_rule.severity = warning
+
+dotnet_naming_rule.properties_rule.symbols = properties
+dotnet_naming_rule.properties_rule.style = pascal_case_style
+dotnet_naming_rule.properties_rule.severity = warning
+
+dotnet_naming_rule.methods_and_events_rule.symbols = methods_and_events
+dotnet_naming_rule.methods_and_events_rule.style = pascal_case_style
+dotnet_naming_rule.methods_and_events_rule.severity = warning
+
+dotnet_naming_rule.locals_and_parameters_rule.symbols = locals_and_parameters
+dotnet_naming_rule.locals_and_parameters_rule.style = camel_case_style
+dotnet_naming_rule.locals_and_parameters_rule.severity = warning

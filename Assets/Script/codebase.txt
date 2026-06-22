@@ -1,0 +1,641 @@
+ 
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Controller\GameboardController.cs
+```csharp
+using System.Collections.Generic;
+using UnityEngine.Tilemaps;
+
+public class GameboardController
+{
+  private readonly GameboardModel _model;
+  private readonly GameboardView _view;
+
+  public GameboardController(GameboardModel model, GameboardView view)
+  {
+    _model = model;
+    _view = view;
+    CreateBoard();
+  }
+
+  public void CreateBoard()
+  {
+    foreach (TileData tile in _model.TilesOnBoard)
+    {
+      _view.CreateTileOnBoard(tile);
+    }
+
+    int i = 0;
+    foreach (TileData tiles in _model.TilesOnRack)
+    {
+      _view.CreateTileOnRack(tiles, i);
+      i++;
+    }
+
+    foreach (TileData tile in _model.TilesOnBoard)
+    {
+      if (_model.IsTileOverlapped(tile))
+      {
+        _view.DarkenTile(tile);
+      }
+    }
+  }
+
+  public void ProcessTileSelect(TileData tile)
+  {
+    TileSelectReceipt receipt = _model.SelectTile(tile);
+    if (receipt.IsMoveLegal == false)
+    {
+      // play tile locked animation shake or smth
+      return;
+    }
+    foreach (TileData revealedTile in receipt.RevealedTiles)
+    {
+      // light up the tile
+    }
+    // play tile to rack animation with receipt.RackInsertionIndex
+    if (receipt.DidMergeOccur)
+    {
+      // merge destruction animation with receipt.MergedTiles
+      // update score with tile so far model
+    }
+    if (receipt.GameIsLost)
+    {
+      // disable board
+      // loose panel
+    }
+    else if (receipt.GameIsWon)
+    {
+      // disable board
+      // win panel
+    }
+  }
+}
+```
+
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Data\GameboardData.cs
+```csharp
+
+using System;
+using System.IO;
+using UnityEngine;
+
+[Serializable]
+public class GameboardData
+{
+  public int MaxWidth;
+  public int MaxHeight;
+  public int TileToWin;
+  public int RackSize;
+  public TileData[] Tiles;
+
+  public static GameboardData FromJson(string json)
+  {
+    return JsonUtility.FromJson<GameboardData>(json);
+  }
+
+  public string ToJson(bool prettyPrint = false)
+  {
+    return JsonUtility.ToJson(this, prettyPrint);
+  }
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Data\GameTileData.cs
+```csharp
+using System;
+
+[Serializable]
+public class TileData
+{
+  public int Type; // could be enum i guess
+  public float X;
+  public float Y;
+  public int Z;
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Data\PlayerData.cs
+```csharp
+using System.IO;
+using UnityEngine;
+
+public class PlayerData
+{
+  public string Name;
+  public int HighestLevel;
+  public int Coins;
+  
+  public SettingData Settings;
+
+  public static PlayerData FromJson(string json)
+  {
+    return JsonUtility.FromJson<PlayerData>(json);
+  }
+
+  public string ToJson(bool prettyPrint = false)
+  {
+    return JsonUtility.ToJson(this, prettyPrint);
+  }
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Data\SettingData.cs
+```csharp
+using System.IO;
+using UnityEngine;
+
+public class SettingData
+{
+  public float MusicVolume = 50;
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Editor\SceneBootstrapper.cs
+```csharp
+using UnityEditor;
+using UnityEditor.SceneManagement;
+
+/// <summary>
+/// This class auto-loads a bootstrap screen (first scene in Build Settings) while working in the Editor.
+/// </summary>
+[InitializeOnLoad]
+public static class SceneBootstrapper
+{
+  // This gets the bootstrap scene, which must be first scene in Build Settings
+  private static string BootstrapScene
+  {
+    get => EditorBuildSettings.scenes[0].path;
+  }
+
+  // This string is the scene name where we entered Play mode
+  private static string PreviousScene
+  {
+    get => EditorPrefs.GetString("k_PreviousScene");
+    set => EditorPrefs.SetString("k_PreviousScene", value);
+  }
+
+  // A static constructor runs with InitializeOnLoad attribute
+  static SceneBootstrapper()
+  {
+    // Listen for the Editor changing play states
+    EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
+  }
+
+  // This runs when the Editor changes play state (e.g. entering Play mode, exiting Play mode)
+  private static void OnPlayModeStateChanged(PlayModeStateChange playModeStateChange)
+  {
+    switch (playModeStateChange)
+    {
+      // This loads bootstrap scene when entering Play mode
+      case PlayModeStateChange.ExitingEditMode:
+
+        PreviousScene = EditorSceneManager.GetActiveScene().path;
+
+        if (EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo() && IsSceneInBuildSettings(BootstrapScene))
+        {
+          EditorSceneManager.OpenScene(BootstrapScene);
+        }
+        break;
+
+      // This restores the PreviousScene when exiting Play mode
+      case PlayModeStateChange.EnteredEditMode:
+
+        if (!string.IsNullOrEmpty(PreviousScene))
+        {
+          EditorSceneManager.OpenScene(PreviousScene);
+        }
+        break;
+    }
+  }
+
+  // Is a scenePath a valid scene in the File > Build Settings?
+  private static bool IsSceneInBuildSettings(string scenePath)
+  {
+    if (string.IsNullOrEmpty(scenePath))
+      return false;
+
+    foreach (var scene in EditorBuildSettings.scenes)
+    {
+      if (scene.path == scenePath)
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Manager\GameboardSceneManager.cs
+```csharp
+using System;
+using UnityEngine;
+
+public class GameboardSceneManager : MonoBehaviour
+{
+  private GameboardModel _model;
+  [SerializeField] private GameboardView _view;
+  private GameboardController _controller;
+  private void Start()
+  {
+    int currentLevel = GameManager.Instance.GameStateModel.CurrentLevel;
+    string json = GameManager.Instance.LocalIOService.ReadJson($"levels/level_{currentLevel}.json");
+    _model = new GameboardModel(GameboardData.FromJson(json));
+    _controller = new GameboardController(_model, _view);
+  }
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Manager\GameManager.cs
+```csharp
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using System.IO;
+
+
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
+public class GameManager : MonoBehaviour
+{
+  public static GameManager Instance { get; private set; } = null;
+  public GameStateModel GameStateModel;
+  public LocalIOService LocalIOService;
+
+  private void Awake()
+  {
+    SingletonSetup();
+    GameStateModel = new GameStateModel();
+    LocalIOService = new LocalIOService(Path.Combine(Application.dataPath, "IO"));
+
+    // init
+    var boardData = new GameboardData
+    {
+      MaxHeight = 7,
+      MaxWidth = 7,
+      RackSize = 7,
+      TileToWin = 10,
+      Tiles = new TileData[]
+        {
+        new() { Type = 1, X = 0, Y = 0, Z = 0 },
+        new() { Type = 2, X = 1, Y = 0, Z = 0 },
+        new() { Type = 3, X = 2, Y = 0, Z = 0 },
+        new() { Type = 4, X = 0, Y = -1, Z = 0 },
+        new() { Type = 5, X = 0, Y = -2, Z = 0 },
+        new() { Type = 10, X = 8, Y = -13, Z = 0 },
+        new() { Type = 9, X = 8, Y = -14, Z = 0 },
+        new() { Type = 6, X = 8, Y = -15, Z = 0 },
+        new() { Type = 7, X = 7, Y = -15, Z = 0 },
+        new() { Type = 8, X = 6, Y = -15, Z = 0 },
+        }
+    };
+    LocalIOService.SaveJson("levels/level_0.json", boardData.ToJson(true));
+    var playerData = new PlayerData
+    {
+      Coins = 1000,
+      HighestLevel = 2,
+      Name = "Nguyen Nguyen",
+      Settings = new SettingData
+      {
+        MusicVolume = 40
+      }
+    };
+    LocalIOService.SaveJson("players/player_0.json", playerData.ToJson(true));
+
+    // scene change 
+    Debug.Log("Game Initialized!");
+
+    ExitBootstrapScene();
+  }
+
+  private void SingletonSetup()
+  {
+    // singleton setup
+    if (Instance != null)
+    {
+      Debug.LogError("Another BootstrapManager on " + gameObject.name);
+      Destroy(gameObject);
+      return;
+    }
+
+    Instance = this;
+    DontDestroyOnLoad(gameObject);
+  }
+
+  private void ExitBootstrapScene()
+  {
+#if UNITY_EDITOR
+    // Fetch the actual saved scene path from EditorPrefs
+    string previousScenePath = EditorPrefs.GetString("k_PreviousScene", "");
+    string bootstrapScenePath = EditorBuildSettings.scenes[0].path;
+
+    // If we came from a scene that is NOT the bootstrap scene, load it back
+    if (!string.IsNullOrEmpty(previousScenePath) && previousScenePath != bootstrapScenePath)
+    {
+      SceneManager.LoadScene(previousScenePath);
+      return;
+    }
+#endif
+
+    SceneManager.LoadScene("Menu");
+  }
+}
+
+.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Model\GameboardModel.cs
+```csharp
+using System.Collections.Generic;
+
+public struct TileSelectReceipt
+{
+  public bool IsMoveLegal;
+  public List<TileData> RevealedTiles;
+  public int RackInsertionIndex;
+  public bool DidMergeOccur;
+  public List<TileData> MergedTiles;
+  public bool GameIsWon;
+  public bool GameIsLost;
+}
+
+public class GameboardModel
+{
+  public int TileSoFar { get; private set; }
+  public GameboardData GameboardData { get; private set; }
+  public List<TileData> TilesOnBoard { get; private set; }
+  public List<TileData> TilesOnRack { get; private set; }
+
+  public GameboardModel(GameboardData data)
+  {
+    TileSoFar = 0;
+    GameboardData = data;
+    TilesOnBoard = new List<TileData>(data.Tiles);
+    TilesOnRack = new List<TileData>();
+  }
+
+  public TileSelectReceipt SelectTile(TileData tile)
+  {
+    var receipt = new TileSelectReceipt();
+    if (IsTileOverlapped(tile))
+    {
+      receipt.IsMoveLegal = false;
+      return receipt;
+    }
+    if (!TryRemoveFromBoard(tile))
+    {
+      receipt.IsMoveLegal = false;
+      return receipt;
+    }
+    receipt.IsMoveLegal = true;
+    receipt.RevealedTiles = GetTilesOverlappedBy(tile);
+    receipt.RackInsertionIndex = AddToRack(tile);
+    receipt.DidMergeOccur = TryMerge(tile, out List<TileData> matchedTiles);
+    receipt.MergedTiles = matchedTiles;
+    receipt.GameIsLost = IsLost();
+    receipt.GameIsWon = IsWon();
+    return receipt;
+  }
+
+  public bool IsTileOverlapped(TileData tile)
+  {
+    foreach (TileData other in TilesOnBoard)
+    {
+      if (other.Z <= tile.Z) continue;
+      if (DoTilesIntersect(tile, other)) return true;
+    }
+    return false;
+  }
+
+  private bool DoTilesIntersect(TileData a, TileData b)
+  {
+    return b.X < (a.X + 1) &&
+           (b.X + 1) > a.X &&
+           b.Y < (a.Y + 1) &&
+           (b.Y + 1) > a.Y;
+  }
+
+
+  private bool IsWon()
+  {
+    return TileSoFar >= GameboardData.TileToWin;
+  }
+
+  private bool IsLost()
+  {
+    return TilesOnRack.Count >= GameboardData.RackSize;
+  }
+
+  private bool TryRemoveFromBoard(TileData tile)
+  {
+    return TilesOnBoard.Remove(tile);
+  }
+
+  private List<TileData> GetTilesOverlappedBy(TileData tile)
+  {
+    var overlappedTiles = new List<TileData>();
+    int underZ = tile.Z - 1;
+    foreach (TileData other in TilesOnBoard)
+    {
+      if (other.Z != underZ) continue;
+      if (DoTilesIntersect(tile, other))
+      {
+        overlappedTiles.Add(other);
+      }
+    }
+    return overlappedTiles;
+  }
+
+  // return insertion index
+  private int AddToRack(TileData tile)
+  {
+    for (int i = TilesOnRack.Count - 1; i >= 0; i--)
+    {
+      if (TilesOnRack[i].Type == tile.Type)
+      {
+        TilesOnRack.Insert(i + 1, tile);
+        return i + 1;
+      }
+    }
+
+    TilesOnRack.Add(tile);
+    return TilesOnRack.Count - 1;
+  }
+
+  private bool TryMerge(TileData tile, out List<TileData> matchedTiles)
+  {
+    matchedTiles = null;
+    for (int i = 0; i < TilesOnRack.Count; i++)
+    {
+      if (TilesOnRack[i].Type == tile.Type
+       && TilesOnRack[i + 1].Type == tile.Type
+       && TilesOnRack[i + 2].Type == tile.Type)
+      {
+        matchedTiles = new List<TileData>
+        {
+            TilesOnRack[i],
+            TilesOnRack[i+1],
+            TilesOnRack[i+2]
+        };
+        TilesOnRack.RemoveRange(i, 3);
+        return true;
+      }
+    }
+    return false;
+  }
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Model\GameStateModel.cs
+```csharp
+public class GameStateModel
+{
+  public int CurrentLevel; // currently playing level
+  public PlayerData PlayerData;
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Service\LocalIOService.cs
+```csharp
+using System.IO;
+
+public class LocalIOService
+{
+  private string _rootPath;
+  public LocalIOService(string root)
+  {
+    _rootPath = root;
+  }
+  public void SaveJson(string relativePath, string json)
+  {
+    string path = Path.Combine(_rootPath, relativePath);
+
+    string directory = Path.GetDirectoryName(path);
+    if (!string.IsNullOrEmpty(directory))
+    {
+      Directory.CreateDirectory(directory);
+    }
+
+    File.WriteAllText(path, json);
+  }
+  public string ReadJson(string relativePath)
+  {
+    return File.ReadAllText(Path.Combine(_rootPath, relativePath));
+  }
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Utils\CameraClamp.cs
+```csharp
+using UnityEngine;
+
+[RequireComponent(typeof(Camera))]
+public class CameraClamp : MonoBehaviour
+{
+    public float Width;
+    public float Height;
+    private Camera _camera;
+
+    private void Awake()
+    {
+        _camera = GetComponent<Camera>();
+    }
+
+    // Update is called once per frame
+    private void LateUpdate()
+    {
+        float targetSizeForHeight = Height / 2;
+
+        float targetSizeForWidth = Width / (_camera.aspect * 2);
+
+        _camera.orthographicSize = Mathf.Max(targetSizeForHeight, targetSizeForWidth);
+    }
+}
+.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\View\GameboardView.cs
+```csharp
+using System.Collections.Generic;
+using UnityEngine;
+
+public class GameboardView : MonoBehaviour
+{
+  [SerializeField] private TileView _tilePrefab;
+
+  private Dictionary<TileData, TileView> _tileMap;
+
+  public void CreateTileOnBoard(TileData tile)
+  {
+    // todo use object pool
+    TileView tileObject = Instantiate(_tilePrefab, new Vector3(tile.X, tile.Y, tile.Z), _tilePrefab.transform.rotation);
+    // todo use addressable
+    tileObject.IconRenderer.sprite = Resources.Load<Sprite>($"Images/Tiles/{tile.Type}");
+  }
+
+  public void CreateTileOnRack(TileData tile, int index)
+  {
+    
+  }
+
+  public void ShakeTile(TileData tile)
+  {
+
+  }
+
+  public void LightenTile(TileData tile)
+  {
+
+  }
+
+  public void DarkenTile(TileData tile)
+  {
+
+  }
+
+  public void MoveTileToRack(TileData tile, int index)
+  {
+
+  }
+
+  public void MergeTile(List<TileData> tiles)
+  {
+
+  }
+
+  public void DisableBoard()
+  {
+
+  }
+
+  public void EnableBoard()
+  {
+
+  }
+
+  public void LoosePanel()
+  {
+
+  }
+
+  public void WinPanel()
+  {
+
+  }
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\View\TileView.cs
+```csharp
+using UnityEngine;
+
+public class TileView : MonoBehaviour
+{
+  [field: SerializeField]
+  public SpriteRenderer IconRenderer { get; private set; }
+}.
+```
+.
