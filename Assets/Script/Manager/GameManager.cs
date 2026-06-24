@@ -29,16 +29,20 @@ public class GameManager : MonoBehaviour
       TileToWin = 10,
       Tiles = new TileData[]
         {
-        new() { Type = 1, X = 0, Y = 0, Z = 0 },
-        new() { Type = 2, X = 1, Y = 0, Z = 0 },
-        new() { Type = 3, X = 2, Y = 0, Z = 0 },
-        new() { Type = 4, X = 0, Y = -1, Z = 0 },
-        new() { Type = 5, X = 0, Y = -2, Z = 0 },
-        new() { Type = 10, X = 8, Y = -13, Z = 0 },
-        new() { Type = 9, X = 8, Y = -14, Z = 0 },
-        new() { Type = 6, X = 8, Y = -15, Z = 0 },
-        new() { Type = 7, X = 7, Y = -15, Z = 0 },
-        new() { Type = 8, X = 6, Y = -15, Z = 0 },
+        new() { Type = 1, X = 0, Y = 7, Z = 0 },
+        new() { Type = 1, X = 0, Y = 6, Z = 0 },
+        new() { Type = 1, X = 0, Y = 5, Z = 0 },
+        new() { Type = 1, X = 1, Y = 7, Z = 0 },
+        new() { Type = 1, X = 1, Y = 6, Z = 0 },
+        new() { Type = 1, X = 1, Y = 5, Z = 0 },
+        new() { Type = 1, X = 2, Y = 7, Z = 0 },
+        new() { Type = 1, X = 2, Y = 6, Z = 0 },
+        new() { Type = 1, X = 2, Y = 5, Z = 0 },
+        new() { Type = 2, X = 0.5f, Y = 6.5f, Z = 1 },
+        new() { Type = 2, X = 0.5f, Y = 5.5f, Z = 1 },
+        new() { Type = 2, X = 1.5f, Y = 6.5f, Z = 1 },
+        new() { Type = 2, X = 1.5f, Y = 5.5f, Z = 1 },
+
         }
     };
     LocalIOService.SaveJson("levels/level_0.json", boardData.ToJson(true));

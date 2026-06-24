@@ -40,7 +40,7 @@ public class GameboardModel
       return receipt;
     }
     receipt.IsMoveLegal = true;
-    receipt.RevealedTiles = GetTilesOverlappedBy(tile);
+    receipt.RevealedTiles = GetTilesRevealedBy(tile);
     receipt.RackInsertionIndex = AddToRack(tile);
     receipt.DidMergeOccur = TryMerge(tile, out List<TileData> matchedTiles);
     receipt.MergedTiles = matchedTiles;
@@ -98,6 +98,21 @@ public class GameboardModel
     return overlappedTiles;
   }
 
+  private List<TileData> GetTilesRevealedBy(TileData tile)
+  {
+    var revealedTiles = new List<TileData>();
+    int underZ = tile.Z - 1;
+    foreach (TileData other in TilesOnBoard)
+    {
+      if (other.Z != underZ) continue;
+      if (!IsTileOverlapped(other))
+      {
+        revealedTiles.Add(other);
+      }
+    }
+    return revealedTiles;
+  }
+
   // return insertion index
   private int AddToRack(TileData tile)
   {
@@ -117,18 +132,21 @@ public class GameboardModel
   private bool TryMerge(TileData tile, out List<TileData> matchedTiles)
   {
     matchedTiles = null;
-    for (int i = 0; i < TilesOnRack.Count; i++)
+
+    // Stop the loop 2 elements early so i + 1 and i + 2 never overshoot the list
+    for (int i = 0; i < TilesOnRack.Count - 2; i++)
     {
       if (TilesOnRack[i].Type == tile.Type
        && TilesOnRack[i + 1].Type == tile.Type
        && TilesOnRack[i + 2].Type == tile.Type)
       {
         matchedTiles = new List<TileData>
-        {
-            TilesOnRack[i],
-            TilesOnRack[i+1],
-            TilesOnRack[i+2]
-        };
+            {
+                TilesOnRack[i],
+                TilesOnRack[i + 1],
+                TilesOnRack[i + 2]
+            };
+
         TilesOnRack.RemoveRange(i, 3);
         return true;
       }

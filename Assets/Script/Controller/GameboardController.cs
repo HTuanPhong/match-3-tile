@@ -1,19 +1,25 @@
-using System.Collections.Generic;
-using UnityEngine.Tilemaps;
-
+using System;
+using Cysharp.Threading.Tasks;
 public class GameboardController
 {
-  private readonly GameboardModel _model;
-  private readonly GameboardView _view;
+  private GameboardModel _model;
+  private GameboardView _view;
+  private GameboardLocalRepository _repo;
 
-  public GameboardController(GameboardModel model, GameboardView view)
+  public GameboardController(GameboardLocalRepository repo, GameboardView view)
   {
-    _model = model;
+    _repo = repo;
     _view = view;
+  }
+
+  public void Start()
+  {
+    _model = _repo.LoadCurrent();
+    _view.TileSelect += (tile) => ProcessTileSelect(tile).Forget();
     CreateBoard();
   }
 
-  public void CreateBoard()
+  private void CreateBoard()
   {
     foreach (TileData tile in _model.TilesOnBoard)
     {
@@ -36,33 +42,33 @@ public class GameboardController
     }
   }
 
-  public void ProcessTileSelect(TileData tile)
+  public async UniTask ProcessTileSelect(TileData tile)
   {
     TileSelectReceipt receipt = _model.SelectTile(tile);
     if (receipt.IsMoveLegal == false)
     {
-      // play tile locked animation shake or smth
+      await _view.ShakeTile(tile);
       return;
     }
     foreach (TileData revealedTile in receipt.RevealedTiles)
     {
-      // light up the tile
+      _view.LightenTile(revealedTile);
     }
-    // play tile to rack animation with receipt.RackInsertionIndex
+    await _view.MoveTileToRack(tile, receipt.RackInsertionIndex);
     if (receipt.DidMergeOccur)
     {
-      // merge destruction animation with receipt.MergedTiles
+      await _view.MergeTile(receipt.MergedTiles);
       // update score with tile so far model
     }
     if (receipt.GameIsLost)
     {
-      // disable board
-      // loose panel
+      _view.DisableBoard();
+      _view.LoosePanel();
     }
     else if (receipt.GameIsWon)
     {
-      // disable board
-      // win panel
+      _view.DisableBoard();
+      _view.WinPanel();
     }
   }
 }

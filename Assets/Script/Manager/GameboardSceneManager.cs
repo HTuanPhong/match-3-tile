@@ -6,11 +6,18 @@ public class GameboardSceneManager : MonoBehaviour
   private GameboardModel _model;
   [SerializeField] private GameboardView _view;
   private GameboardController _controller;
+  private GameboardLocalRepository _localRepository;
+
+  private void Awake()
+  {
+    _localRepository = new GameboardLocalRepository(
+                            GameManager.Instance.GameStateModel,
+                            GameManager.Instance.LocalIOService);
+    _controller = new GameboardController(_localRepository, _view);
+  }
+
   private void Start()
   {
-    int currentLevel = GameManager.Instance.GameStateModel.CurrentLevel;
-    string json = GameManager.Instance.LocalIOService.ReadJson($"levels/level_{currentLevel}.json");
-    _model = new GameboardModel(GameboardData.FromJson(json));
-    _controller = new GameboardController(_model, _view);
+    _controller.Start();
   }
 }
