@@ -10,7 +10,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3510775502648716105}
   - component: {fileID: 3258926360313281233}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Icon
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -75,7 +75,7 @@ SpriteRenderer:
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 1
+  m_SortingOrder: 0
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -96,16 +96,16 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2655059820194642657}
-  - component: {fileID: 4010226945147856384}
   - component: {fileID: 4841015596303808299}
   - component: {fileID: 2466115189957142924}
-  m_Layer: 0
+  - component: {fileID: 7464546567344320906}
+  m_Layer: 6
   m_Name: Tile
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &2655059820194642657
 Transform:
   m_ObjectHideFlags: 0
@@ -119,22 +119,10 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 3510775502648716105}
   - {fileID: 3756111991707119635}
+  - {fileID: 3510775502648716105}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!210 &4010226945147856384
-SortingGroup:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5832429461825985142}
-  m_Enabled: 1
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
-  m_SortingOrder: 0
-  m_SortAtRoot: 0
 --- !u!114 &4841015596303808299
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -149,6 +137,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   <IconRenderer>k__BackingField: {fileID: 3258926360313281233}
   <BaseRenderer>k__BackingField: {fileID: 6790242596232587693}
+  DarkColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
   Tile:
     Type: 0
     X: 0
@@ -200,6 +189,18 @@ BoxCollider2D:
   m_AutoTiling: 0
   m_Size: {x: 1, y: 1.1305984}
   m_EdgeRadius: 0
+--- !u!210 &7464546567344320906
+SortingGroup:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5832429461825985142}
+  m_Enabled: 1
+  m_SortingLayerID: 0
+  m_SortingLayer: 0
+  m_SortingOrder: 0
+  m_SortAtRoot: 0
 --- !u!1 &7048901540750629514
 GameObject:
   m_ObjectHideFlags: 0
@@ -210,7 +211,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3756111991707119635}
   - component: {fileID: 6790242596232587693}
-  m_Layer: 0
+  m_Layer: 6
   m_Name: Base
   m_TagString: Untagged
   m_Icon: {fileID: 0}

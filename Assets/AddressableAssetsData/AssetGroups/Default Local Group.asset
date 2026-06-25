@@ -1,0 +1,98 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bbb281ee3bf0b054c82ac2347e9e782c, type: 3}
+  m_Name: Default Local Group
+  m_EditorClassIdentifier: 
+  m_GroupName: Default Local Group
+  m_GUID: 42d93544322273343bb4d06ffae516db
+  m_SerializeEntries:
+  - m_GUID: 0d4d659ebcf955c4aa8bbfa7d3463c81
+    m_Address: Assets/Images/Tiles/4.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 12ebaf511742ad9438f0917265d46629
+    m_Address: Assets/Images/Tiles/14.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 1912f8b0bd2c3da4e86041adde509168
+    m_Address: Assets/Images/Tiles/3.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 34923b5b9823b4b498d5b9852fbcac34
+    m_Address: Assets/Images/Tiles/11.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 40ca4b05312fc254894e07ee39d34706
+    m_Address: Assets/Images/Tiles/5.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 4abfdf06b6d4ba64e97fb691178f8219
+    m_Address: Assets/Images/Tiles/12.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 55ba806b46ca8a9409f1ac0166625c9d
+    m_Address: Assets/Images/Tiles/13.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 58b5ef981f00d8a478e196689fce4f32
+    m_Address: Assets/Atlas/Tiles.spriteatlasv2
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 6fae95fef3dbb5e4194efad1494f74be
+    m_Address: Assets/Images/Tiles/8.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: a865a2100e427cb44bd007076e26dd39
+    m_Address: Assets/Images/Tiles/7.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b2644e15a00828c4590c3c19a8398188
+    m_Address: Assets/Images/Tiles/6.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b2f3319f511fab7489660b1adfc88eed
+    m_Address: Assets/Images/Tiles/9.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: b5cc572d2cba4964d838099a1a4ad304
+    m_Address: Assets/Images/Tiles/10.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d4cb84dc28165f441ac16949aa449c7e
+    m_Address: Assets/Images/Tiles/1.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: d9a66abf0a5752d47be2d7dfd6dff82d
+    m_Address: Assets/Images/Tiles/2.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  m_ReadOnly: 0
+  m_Settings: {fileID: 11400000, guid: cc6594c77d6044644b3349201f05ac06, type: 2}
+  m_SchemaSet:
+    m_Schemas:
+    - {fileID: 11400000, guid: 27a2df4a590129c479ed6de8e1873491, type: 2}
+    - {fileID: 11400000, guid: 0dafb84427da3c442b3c892131776747, type: 2}

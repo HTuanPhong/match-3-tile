@@ -1,6 +1,9 @@
  
 FILE: C:\unity-dev\match-3-tile\Assets\Script\Controller\GameboardController.cs
 ```csharp
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
+using UnityEngine;
 public class GameboardController
 {
   private GameboardModel _model;
@@ -16,7 +19,7 @@ public class GameboardController
   public void Start()
   {
     _model = _repo.LoadCurrent();
-    _view.TileSelect += ProcessTileSelect;
+    _view.TileSelect += (tile) => ProcessTileSelect(tile).Forget();
     CreateBoard();
   }
 
@@ -38,29 +41,76 @@ public class GameboardController
     {
       if (_model.IsTileOverlapped(tile))
       {
-        _view.DarkenTile(tile);
+        _view.DarkenTile(tile).Forget();
       }
     }
   }
 
-  public void ProcessTileSelect(TileData tile)
+  public async UniTask ProcessTileSelect(TileData tile)
   {
     TileSelectReceipt receipt = _model.SelectTile(tile);
     if (receipt.IsMoveLegal == false)
     {
-      _view.ShakeTile(tile);
+      await _view.ShakeTile(tile);
       return;
     }
+
+    // Lighten revealed tiles in the background without waiting
     foreach (TileData revealedTile in receipt.RevealedTiles)
     {
-      _view.LightenTile(revealedTile);
+      _view.LightenTile(revealedTile).Forget();
     }
-    _view.MoveTileToRack(tile, receipt.RackInsertionIndex);
+
     if (receipt.DidMergeOccur)
     {
-      _view.MergeTile(receipt.MergedTiles);
+      // SHIFT RIGHT (Make space)
+      // The model already removed the 3 merged tiles. Any remaining tile with an index 
+      // >= (RackInsertionIndex - 2) was sitting 3 spaces to the right before the merge happened.
+      for (int i = 0; i < _model.TilesOnRack.Count; i++)
+      {
+        if (i >= receipt.RackInsertionIndex - 2)
+        {
+          _view.MoveTileToRack(_model.TilesOnRack[i], i + 3).Forget();
+        }
+      }
+
+      // INSERT (Move the newly clicked tile into its slot)
+      await _view.MoveTileToRack(tile, receipt.RackInsertionIndex);
+
+      // MERGE (Pop the 3 matching tiles)
+      await _view.MergeTile(receipt.MergedTiles);
+
+      // SHIFT LEFT (Close the gap left by the destroyed tiles)
+      UniTask lastSlideTask = UniTask.CompletedTask;
+      for (int i = 0; i < _model.TilesOnRack.Count; i++)
+      {
+        if (i >= receipt.RackInsertionIndex - 2)
+        {
+          // Zero Allocation trick: Only await the very last task
+          if (i == _model.TilesOnRack.Count - 1)
+            lastSlideTask = _view.MoveTileToRack(_model.TilesOnRack[i], i);
+          else
+            _view.MoveTileToRack(_model.TilesOnRack[i], i).Forget();
+        }
+      }
+      await lastSlideTask;
+
       // update score with tile so far model
     }
+    else
+    {
+      // NO MERGE: Just shift the necessary tiles right and insert the new one.
+      // The new tile is at RackInsertionIndex in the model, so we shift everything after it right by 1.
+      for (int i = receipt.RackInsertionIndex + 1; i < _model.TilesOnRack.Count; i++)
+      {
+        _view.MoveTileToRack(_model.TilesOnRack[i], i).Forget();
+      }
+
+      // Wait for the new tile to slot into place
+      await _view.MoveTileToRack(tile, receipt.RackInsertionIndex);
+    }
+
+    // End game states
     if (receipt.GameIsLost)
     {
       _view.DisableBoard();
@@ -264,10 +314,9 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using System.IO;
 
-
-
 #if UNITY_EDITOR
 using UnityEditor;
+using UnityEditor.SceneManagement;
 #endif
 
 public class GameManager : MonoBehaviour
@@ -291,6 +340,10 @@ public class GameManager : MonoBehaviour
       TileToWin = 10,
       Tiles = new TileData[]
         {
+        new() { Type = 2, X = 0.5f, Y = 6.5f, Z = 1 },
+        new() { Type = 2, X = 0.5f, Y = 5.5f, Z = 1 },
+        new() { Type = 2, X = 1.5f, Y = 6.5f, Z = 1 },
+        new() { Type = 2, X = 1.5f, Y = 5.5f, Z = 1 },
         new() { Type = 1, X = 0, Y = 7, Z = 0 },
         new() { Type = 1, X = 0, Y = 6, Z = 0 },
         new() { Type = 1, X = 0, Y = 5, Z = 0 },
@@ -300,10 +353,6 @@ public class GameManager : MonoBehaviour
         new() { Type = 1, X = 2, Y = 7, Z = 0 },
         new() { Type = 1, X = 2, Y = 6, Z = 0 },
         new() { Type = 1, X = 2, Y = 5, Z = 0 },
-        new() { Type = 2, X = 0.5f, Y = 6.5f, Z = 1 },
-        new() { Type = 2, X = 0.5f, Y = 5.5f, Z = 1 },
-        new() { Type = 2, X = 1.5f, Y = 6.5f, Z = 1 },
-        new() { Type = 2, X = 1.5f, Y = 5.5f, Z = 1 },
 
         }
     };
@@ -350,7 +399,8 @@ public class GameManager : MonoBehaviour
     // If we came from a scene that is NOT the bootstrap scene, load it back
     if (!string.IsNullOrEmpty(previousScenePath) && previousScenePath != bootstrapScenePath)
     {
-      SceneManager.LoadScene(previousScenePath);
+      // This loads the test scene instantly in the Editor without needing a build setup
+      EditorSceneManager.LoadSceneInPlayMode(previousScenePath, new LoadSceneParameters(LoadSceneMode.Single));
       return;
     }
 #endif
@@ -373,6 +423,7 @@ public struct TileSelectReceipt
   public int RackInsertionIndex;
   public bool DidMergeOccur;
   public List<TileData> MergedTiles;
+  public List<TileData> FinalRackResult;
   public bool GameIsWon;
   public bool GameIsLost;
 }
@@ -384,12 +435,15 @@ public class GameboardModel
   public List<TileData> TilesOnBoard { get; private set; }
   public List<TileData> TilesOnRack { get; private set; }
 
+  private readonly List<TileData> _revealedTilesCache = new List<TileData>(4);
+  private readonly List<TileData> _mergedTilesCache = new List<TileData>(3);
+
   public GameboardModel(GameboardData data)
   {
     TileSoFar = 0;
     GameboardData = data;
     TilesOnBoard = new List<TileData>(data.Tiles);
-    TilesOnRack = new List<TileData>();
+    TilesOnRack = new List<TileData>(data.RackSize);
   }
 
   public TileSelectReceipt SelectTile(TileData tile)
@@ -406,10 +460,12 @@ public class GameboardModel
       return receipt;
     }
     receipt.IsMoveLegal = true;
-    receipt.RevealedTiles = GetTilesRevealedBy(tile);
+    CalculateTilesRevealedBy(tile, _revealedTilesCache);
+    receipt.RevealedTiles = _revealedTilesCache;
     receipt.RackInsertionIndex = AddToRack(tile);
-    receipt.DidMergeOccur = TryMerge(tile, out List<TileData> matchedTiles);
-    receipt.MergedTiles = matchedTiles;
+    receipt.DidMergeOccur = TryMerge(tile, _mergedTilesCache);
+    receipt.MergedTiles = _mergedTilesCache;
+    receipt.FinalRackResult = TilesOnRack;
     receipt.GameIsLost = IsLost();
     receipt.GameIsWon = IsWon();
     return receipt;
@@ -449,34 +505,18 @@ public class GameboardModel
     return TilesOnBoard.Remove(tile);
   }
 
-  private List<TileData> GetTilesOverlappedBy(TileData tile)
+  private void CalculateTilesRevealedBy(TileData tile, List<TileData> results)
   {
-    var overlappedTiles = new List<TileData>();
-    int underZ = tile.Z - 1;
-    foreach (TileData other in TilesOnBoard)
-    {
-      if (other.Z != underZ) continue;
-      if (DoTilesIntersect(tile, other))
-      {
-        overlappedTiles.Add(other);
-      }
-    }
-    return overlappedTiles;
-  }
-
-  private List<TileData> GetTilesRevealedBy(TileData tile)
-  {
-    var revealedTiles = new List<TileData>();
+    results.Clear();
     int underZ = tile.Z - 1;
     foreach (TileData other in TilesOnBoard)
     {
       if (other.Z != underZ) continue;
       if (!IsTileOverlapped(other))
       {
-        revealedTiles.Add(other);
+        results.Add(other);
       }
     }
-    return revealedTiles;
   }
 
   // return insertion index
@@ -495,9 +535,9 @@ public class GameboardModel
     return TilesOnRack.Count - 1;
   }
 
-  private bool TryMerge(TileData tile, out List<TileData> matchedTiles)
+  private bool TryMerge(TileData tile, List<TileData> matchedTiles)
   {
-    matchedTiles = null;
+    matchedTiles.Clear();
 
     // Stop the loop 2 elements early so i + 1 and i + 2 never overshoot the list
     for (int i = 0; i < TilesOnRack.Count - 2; i++)
@@ -506,12 +546,9 @@ public class GameboardModel
        && TilesOnRack[i + 1].Type == tile.Type
        && TilesOnRack[i + 2].Type == tile.Type)
       {
-        matchedTiles = new List<TileData>
-            {
-                TilesOnRack[i],
-                TilesOnRack[i + 1],
-                TilesOnRack[i + 2]
-            };
+        matchedTiles.Add(TilesOnRack[i]);
+        matchedTiles.Add(TilesOnRack[i + 1]);
+        matchedTiles.Add(TilesOnRack[i + 2]);
 
         TilesOnRack.RemoveRange(i, 3);
         return true;
@@ -587,6 +624,68 @@ public class LocalIOService
 }.
 ```
 .
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Utils\BackgroundFitter.cs
+```csharp
+using UnityEngine;
+
+[RequireComponent(typeof(SpriteRenderer))]
+public class BackgroundFitter : MonoBehaviour
+{
+    private Camera _mainCamera;
+    private SpriteRenderer _spriteRenderer;
+
+    // These store the previous frame's data to detect changes
+    private float _lastOrthoSize;
+    private float _lastAspect;
+
+    private void Start()
+    {
+        _mainCamera = Camera.main;
+        _spriteRenderer = GetComponent<SpriteRenderer>();
+
+        // Do an initial fit right when the game starts
+        FitToScreen();
+    }
+
+    private void LateUpdate()
+    {
+        if (_mainCamera == null) return;
+
+        // Check if the camera's zoom (ortho size) or screen shape (aspect) changed
+        if (_mainCamera.orthographicSize != _lastOrthoSize || _mainCamera.aspect != _lastAspect)
+        {
+            FitToScreen();
+        }
+    }
+
+    private void FitToScreen()
+    {
+        if (_spriteRenderer.sprite == null || _mainCamera == null || !_mainCamera.orthographic) return;
+
+        // Save the new camera values so we stop checking until they change again
+        _lastOrthoSize = _mainCamera.orthographicSize;
+        _lastAspect = _mainCamera.aspect;
+
+        // Get the Camera's current width and height in world space
+        float screenHeight = _mainCamera.orthographicSize * 2f;
+        float screenWidth = screenHeight * _mainCamera.aspect;
+
+        // Get the Sprite's raw, unscaled width and height
+        float spriteHeight = _spriteRenderer.sprite.bounds.size.y;
+        float spriteWidth = _spriteRenderer.sprite.bounds.size.x;
+
+        // Calculate the scale required to fit
+        float scaleY = screenHeight / spriteHeight;
+        float scaleX = screenWidth / spriteWidth;
+
+        // Apply the Envelope scale (cover the whole screen without stretching or black bars)
+        float finalScale = Mathf.Max(scaleX, scaleY);
+
+        transform.localScale = new Vector3(finalScale, finalScale, 1f);
+    }
+}.
+```
+.
 FILE: C:\unity-dev\match-3-tile\Assets\Script\Utils\CameraClamp.cs
 ```csharp
 using UnityEngine;
@@ -598,6 +697,9 @@ public class CameraClamp : MonoBehaviour
     public float Height;
     private Camera _camera;
 
+    private float _lastAspect;
+
+
     private void Awake()
     {
         _camera = GetComponent<Camera>();
@@ -606,11 +708,16 @@ public class CameraClamp : MonoBehaviour
     // Update is called once per frame
     private void LateUpdate()
     {
-        float targetSizeForHeight = Height / 2;
+        if (_camera.aspect != _lastAspect)
+        {
+            _lastAspect = _camera.aspect;
 
-        float targetSizeForWidth = Width / (_camera.aspect * 2);
+            float targetSizeForHeight = Height / 2;
 
-        _camera.orthographicSize = Mathf.Max(targetSizeForHeight, targetSizeForWidth);
+            float targetSizeForWidth = Width / (_camera.aspect * 2);
+
+            _camera.orthographicSize = Mathf.Max(targetSizeForHeight, targetSizeForWidth);
+        }
     }
 }
 .
@@ -623,6 +730,9 @@ using System.Collections.Generic;
 using DG.Tweening;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Cysharp.Threading.Tasks;
+using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
 
 public class GameboardView : MonoBehaviour
 {
@@ -633,12 +743,13 @@ public class GameboardView : MonoBehaviour
   [SerializeField] private Transform[] _rackTransforms;
   private Dictionary<TileData, TileView> _tileMap;
   private TileView _chosenOne;
+  private int _layerMask;
 
   public event Action<TileData> TileSelect;
 
   private void Awake()
   {
-
+    _layerMask = LayerMask.GetMask("Tiles");
     _tileMap = new Dictionary<TileData, TileView>();
   }
 
@@ -661,14 +772,18 @@ public class GameboardView : MonoBehaviour
     bool isPressed = context.ReadValueAsButton();
     Vector2 pos = _pointAction.action.ReadValue<Vector2>();
     Ray ray = _camera.ScreenPointToRay(pos);
-    RaycastHit2D hit = Physics2D.GetRayIntersection(ray);
+    RaycastHit2D hit = Physics2D.GetRayIntersection(ray, Mathf.Infinity, _layerMask);
     if (hit.collider == null)
     {
       _chosenOne = null;
       return;
     }
-    Debug.DrawRay(ray.origin, ray.direction * 10, Color.red, hit.transform.position.z - _camera.transform.position.z);
     TileView tileView = hit.collider.GetComponent<TileView>();
+    if (tileView == null)
+    {
+      _chosenOne = null;
+      return;
+    }
     if (isPressed)
     {
       _chosenOne = tileView;
@@ -686,11 +801,22 @@ public class GameboardView : MonoBehaviour
   public void CreateTileOnBoard(TileData tile)
   {
     // todo use object pool
-    TileView tileView = Instantiate(_tilePrefab, new Vector3(tile.X, tile.Y, -tile.Z), _tilePrefab.transform.rotation);
-    // todo use addressable
-    tileView.IconRenderer.sprite = Resources.Load<Sprite>($"Images/Tiles/{tile.Type}");
+    TileView tileView = Instantiate(_tilePrefab, new Vector3(tile.X, tile.Y, -tile.Z + tile.Y / 10), _tilePrefab.transform.rotation);
     tileView.Tile = tile;
     _tileMap.Add(tile, tileView);
+    string address = $"Assets/Images/Tiles/{tile.Type}.png";
+    Addressables.LoadAssetAsync<Sprite>(address).Completed += (AsyncOperationHandle<Sprite> handle) =>
+    {
+      if (handle.Status == AsyncOperationStatus.Succeeded)
+      {
+        // Assign the loaded sprite to the IconRenderer
+        tileView.IconRenderer.sprite = handle.Result;
+      }
+      else
+      {
+        Debug.LogError($"Failed to load Addressable sprite: {address}");
+      }
+    };
   }
 
   public void CreateTileOnRack(TileData tile, int index)
@@ -698,57 +824,43 @@ public class GameboardView : MonoBehaviour
 
   }
 
-  public void ShakeTile(TileData tile)
-  {
-    Transform tileTransform = _tileMap[tile].transform;
-    Vector3 originalPos = tileTransform.localPosition;
-    if (DOTween.IsTweening(tileTransform))
-    {
-      return;
-    }
-    tileTransform
-        .DOShakePosition(
-            duration: 0.25f,
-            strength: new Vector3(0.1f, 0f, 0f), // left-right only
-            vibrato: 20,
-            randomness: 0,
-            snapping: false,
-            fadeOut: true
-        )
-        .OnComplete(() => tileTransform.localPosition = originalPos);
-  }
-
-  public void LightenTile(TileData tile)
+  public UniTask ShakeTile(TileData tile)
   {
     TileView tv = _tileMap[tile];
-    SpriteRenderer baseSR = tv.BaseRenderer;
-    SpriteRenderer iconSR = tv.IconRenderer;
-    baseSR.color = new Color(1, 1, 1, baseSR.color.a);
-    iconSR.color = new Color(1, 1, 1, iconSR.color.a);
+    return tv.Shake();
   }
 
-  public void DarkenTile(TileData tile)
+  public UniTask LightenTile(TileData tile)
   {
     TileView tv = _tileMap[tile];
-    SpriteRenderer baseSR = tv.BaseRenderer;
-    SpriteRenderer iconSR = tv.IconRenderer;
-    baseSR.color = new Color(0.5f, 0.5f, 0.5f, baseSR.color.a);
-    iconSR.color = new Color(0.5f, 0.5f, 0.5f, iconSR.color.a);
+    return tv.Lighten();
   }
 
-  public void MoveTileToRack(TileData tile, int index)
+  public UniTask DarkenTile(TileData tile)
   {
     TileView tv = _tileMap[tile];
-    tv.transform.DOMove(_rackTransforms[index].position, 0.5f);
+    return tv.Darken();
   }
 
-  public void MergeTile(List<TileData> tiles)
+  public UniTask MoveTileToRack(TileData tile, int index)
   {
+    TileView tv = _tileMap[tile];
+    return tv.MoveTo(_rackTransforms[index].position);
+  }
+
+  public UniTask MergeTile(List<TileData> tiles)
+  {
+    List<UniTask> mergeTasks = new List<UniTask>();
+
     foreach (TileData tile in tiles)
     {
-      // shrink and destroy them
-      Destroy(_tileMap[tile].gameObject);
+      TileView tv = _tileMap[tile];
+      // Add to our tracker so we wait for all tiles simultaneously
+      mergeTasks.Add(tv.Die());
     }
+
+    // Wait until ALL tiles have finished their fancy destroy animations
+    return UniTask.WhenAll(mergeTasks);
   }
 
   public void DisableBoard()
@@ -775,13 +887,99 @@ public class GameboardView : MonoBehaviour
 .
 FILE: C:\unity-dev\match-3-tile\Assets\Script\View\TileView.cs
 ```csharp
+using Cysharp.Threading.Tasks;
+using DG.Tweening;
+using NaughtyAttributes;
 using UnityEngine;
 
+[SelectionBase]
 public class TileView : MonoBehaviour
 {
   [field: SerializeField] public SpriteRenderer IconRenderer { get; private set; }
   [field: SerializeField] public SpriteRenderer BaseRenderer { get; private set; }
+  public Color DarkColor = new Color(0.5f, 0.5f, 0.5f, 1f);
   [HideInInspector] public TileData Tile;
+
+
+  [Button()]
+  public UniTask Shake()
+  {
+    if (DOTween.IsTweening(gameObject)) return UniTask.CompletedTask;
+
+    // Juice: Shake position + slight rotation + a brief red error flash
+    Sequence seq = DOTween.Sequence().SetTarget(gameObject);
+
+    _ = seq.Append(transform.DOShakePosition(duration: 0.25f, strength: new Vector3(0.1f, 0f, 0f), vibrato: 20, randomness: 0))
+       .Join(transform.DOShakeRotation(duration: 0.25f, strength: new Vector3(0, 0, 10f), vibrato: 15)) // Wiggle
+       .Join(BaseRenderer.DOColor(new Color(1f, 0.5f, 0.5f), 0.125f).SetLoops(2, LoopType.Yoyo)) // Flash red and back
+       .Join(IconRenderer.DOColor(new Color(1f, 0.5f, 0.5f), 0.125f).SetLoops(2, LoopType.Yoyo));
+    return seq.ToUniTask(TweenCancelBehaviour.Complete);
+  }
+
+  [Button()]
+  public UniTask Lighten()
+  {
+    // Juice: Smooth fade instead of instant snap
+    UniTask baseTween = BaseRenderer.DOColor(Color.white, 0.15f).SetEase(Ease.OutQuad).ToUniTask(TweenCancelBehaviour.Complete);
+    UniTask iconTween = IconRenderer.DOColor(Color.white, 0.15f).SetEase(Ease.OutQuad).ToUniTask(TweenCancelBehaviour.Complete);
+    return UniTask.WhenAll(baseTween, iconTween);
+  }
+
+  [Button()]
+  public UniTask Darken()
+  {
+    // Juice: Smooth fade to dark
+    UniTask baseTween = BaseRenderer.DOColor(DarkColor, 0.15f).SetEase(Ease.OutQuad).ToUniTask(TweenCancelBehaviour.Complete);
+    UniTask iconTween = IconRenderer.DOColor(DarkColor, 0.15f).SetEase(Ease.OutQuad).ToUniTask(TweenCancelBehaviour.Complete);
+    return UniTask.WhenAll(baseTween, iconTween);
+  }
+  public UniTask MoveTo(Vector3 newPos)
+  {
+    Sequence seq = DOTween.Sequence().SetTarget(gameObject);
+    // Juice: Move it with the snap, but also add a tiny scale "pulse" as it flies
+    _ = seq.Append(transform.DOMove(newPos, 0.2f).SetEase(Ease.OutBack, 1.1f))
+             .Join(transform.DOPunchScale(new Vector3(0.15f, 0.15f, 0f), 0.18f, 1, 0.5f));
+    return seq.ToUniTask(TweenCancelBehaviour.Complete);
+  }
+
+#if UNITY_EDITOR
+  private bool __moveFlipFlop = true;
+  [Button()]
+  public UniTask MoveTest()
+  {
+    Vector3 result = __moveFlipFlop ? new Vector3(1, 1) : new Vector3(3, 5);
+    __moveFlipFlop = !__moveFlipFlop;
+    return MoveTo(result);
+  }
+#endif
+
+  [Button()]
+  public UniTask Die()
+  {
+    Sequence seq = DOTween.Sequence().SetTarget(gameObject);
+
+    // Anticipation: Scale up slightly and flash bright white
+    _ = seq.Append(transform.DOScale(1.2f, 0.1f).SetEase(Ease.OutQuad))
+       .Join(BaseRenderer.DOColor(Color.white, 0.1f)) // Ensure it's fully bright
+       .Join(IconRenderer.DOColor(Color.white, 0.1f));
+
+    // The Pop: Spin, suck inward to scale 0, and float up slightly go to heaven stuff
+    _ = seq.Append(transform.DOScale(0f, 0.2f).SetEase(Ease.InBack))
+       .Join(transform.DORotate(new Vector3(0, 0, 180f), 0.2f, RotateMode.FastBeyond360).SetEase(Ease.InQuad))
+       .Join(transform.DOMoveY(transform.position.y + 0.5f, 0.2f).SetEase(Ease.InQuad)) // Float up to heaven
+       .Join(BaseRenderer.DOFade(0f, 0.15f)) // Fade out alpha
+       .Join(IconRenderer.DOFade(0f, 0.15f));
+
+    // 3. Cleanup: Destroy the object once the sequence finishes
+    _ = seq.OnComplete(() => gameObject.SetActive(false));
+    return seq.ToUniTask(TweenCancelBehaviour.Complete);
+  }
+
+  [Button()]
+  public UniTask Spawn()
+  {
+    return UniTask.CompletedTask;
+  }
 }.
 ```
 .

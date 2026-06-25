@@ -7,6 +7,9 @@ public class CameraClamp : MonoBehaviour
     public float Height;
     private Camera _camera;
 
+    private float _lastAspect;
+
+
     private void Awake()
     {
         _camera = GetComponent<Camera>();
@@ -15,10 +18,15 @@ public class CameraClamp : MonoBehaviour
     // Update is called once per frame
     private void LateUpdate()
     {
-        float targetSizeForHeight = Height / 2;
+        if (_camera.aspect != _lastAspect)
+        {
+            _lastAspect = _camera.aspect;
 
-        float targetSizeForWidth = Width / (_camera.aspect * 2);
+            float targetSizeForHeight = Height / 2;
 
-        _camera.orthographicSize = Mathf.Max(targetSizeForHeight, targetSizeForWidth);
+            float targetSizeForWidth = Width / (_camera.aspect * 2);
+
+            _camera.orthographicSize = Mathf.Max(targetSizeForHeight, targetSizeForWidth);
+        }
     }
 }
