@@ -11,8 +11,8 @@ public class GameboardSceneManager : MonoBehaviour
   private void Awake()
   {
     _localRepository = new GameboardLocalRepository(
-                            GameManager.Instance.GameStateModel,
-                            GameManager.Instance.LocalIOService);
+                            GlobalModelManager.Instance.GameStateModel,
+                            GlobalServiceManager.Instance.LocalIOService);
     _controller = new GameboardController(_localRepository, _view);
   }
 

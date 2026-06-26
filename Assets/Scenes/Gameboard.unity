@@ -498,16 +498,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _camera: {fileID: 1384771877}
   _tilePrefab: {fileID: 4841015596303808299, guid: 731d23d11fd5aa64fb2e9d6bac1bca2f, type: 3}
+  _particlePrefab: {fileID: 4416627763613919710, guid: 1f861f35bcf98aa4c82958aeb8d1162a, type: 3}
   _pointAction: {fileID: -1654692200621890270, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
   _clickAction: {fileID: 3001919216989983466, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}
-  _rackTransforms:
-  - {fileID: 1859111550}
-  - {fileID: 192421804}
-  - {fileID: 1744257471}
-  - {fileID: 93495634}
-  - {fileID: 92124038}
-  - {fileID: 124608970}
-  - {fileID: 934983594}
+  _rackTransform: {fileID: 1859111550}
 --- !u!4 &435132127
 Transform:
   m_ObjectHideFlags: 0

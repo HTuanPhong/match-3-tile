@@ -1,9 +1,6 @@
  
 FILE: C:\unity-dev\match-3-tile\Assets\Script\Controller\GameboardController.cs
 ```csharp
-using System.Collections.Generic;
-using Cysharp.Threading.Tasks;
-using UnityEngine;
 public class GameboardController
 {
   private GameboardModel _model;
@@ -19,108 +16,17 @@ public class GameboardController
   public void Start()
   {
     _model = _repo.LoadCurrent();
-    _view.TileSelect += (tile) => ProcessTileSelect(tile).Forget();
-    CreateBoard();
-  }
+    // view -> model
+    _view.TileSelect += _model.SelectTile;
+    // model -> view
+    _model.OnTileIllegalSelected += _view.OnTileShake;
+    _model.OnTileRemovedFromBoard += _view.OnTileSelectFeedback;
+    _model.OnTileRevealed += _view.OnTileLighten;
+    _model.OnTileAddedToRack += _view.QueueTileMovement;
+    _model.OnMatchCleared += _view.QueueMatchClear;
+    _model.OnGameEnded += _view.QueueGameEnd;
 
-  private void CreateBoard()
-  {
-    foreach (TileData tile in _model.TilesOnBoard)
-    {
-      _view.CreateTileOnBoard(tile);
-    }
-
-    int i = 0;
-    foreach (TileData tiles in _model.TilesOnRack)
-    {
-      _view.CreateTileOnRack(tiles, i);
-      i++;
-    }
-
-    foreach (TileData tile in _model.TilesOnBoard)
-    {
-      if (_model.IsTileOverlapped(tile))
-      {
-        _view.DarkenTile(tile).Forget();
-      }
-    }
-  }
-
-  public async UniTask ProcessTileSelect(TileData tile)
-  {
-    TileSelectReceipt receipt = _model.SelectTile(tile);
-    if (receipt.IsMoveLegal == false)
-    {
-      await _view.ShakeTile(tile);
-      return;
-    }
-
-    // Lighten revealed tiles in the background without waiting
-    foreach (TileData revealedTile in receipt.RevealedTiles)
-    {
-      _view.LightenTile(revealedTile).Forget();
-    }
-
-    if (receipt.DidMergeOccur)
-    {
-      // SHIFT RIGHT (Make space)
-      // The model already removed the 3 merged tiles. Any remaining tile with an index 
-      // >= (RackInsertionIndex - 2) was sitting 3 spaces to the right before the merge happened.
-      for (int i = 0; i < _model.TilesOnRack.Count; i++)
-      {
-        if (i >= receipt.RackInsertionIndex - 2)
-        {
-          _view.MoveTileToRack(_model.TilesOnRack[i], i + 3).Forget();
-        }
-      }
-
-      // INSERT (Move the newly clicked tile into its slot)
-      await _view.MoveTileToRack(tile, receipt.RackInsertionIndex);
-
-      // MERGE (Pop the 3 matching tiles)
-      await _view.MergeTile(receipt.MergedTiles);
-
-      // SHIFT LEFT (Close the gap left by the destroyed tiles)
-      UniTask lastSlideTask = UniTask.CompletedTask;
-      for (int i = 0; i < _model.TilesOnRack.Count; i++)
-      {
-        if (i >= receipt.RackInsertionIndex - 2)
-        {
-          // Zero Allocation trick: Only await the very last task
-          if (i == _model.TilesOnRack.Count - 1)
-            lastSlideTask = _view.MoveTileToRack(_model.TilesOnRack[i], i);
-          else
-            _view.MoveTileToRack(_model.TilesOnRack[i], i).Forget();
-        }
-      }
-      await lastSlideTask;
-
-      // update score with tile so far model
-    }
-    else
-    {
-      // NO MERGE: Just shift the necessary tiles right and insert the new one.
-      // The new tile is at RackInsertionIndex in the model, so we shift everything after it right by 1.
-      for (int i = receipt.RackInsertionIndex + 1; i < _model.TilesOnRack.Count; i++)
-      {
-        _view.MoveTileToRack(_model.TilesOnRack[i], i).Forget();
-      }
-
-      // Wait for the new tile to slot into place
-      await _view.MoveTileToRack(tile, receipt.RackInsertionIndex);
-    }
-
-    // End game states
-    if (receipt.GameIsLost)
-    {
-      _view.DisableBoard();
-      _view.LoosePanel();
-    }
-    else if (receipt.GameIsWon)
-    {
-      _view.DisableBoard();
-      _view.WinPanel();
-    }
+    _view.CreateBoard(_model.TilesOnBoard, _model.TilesOnRack, _model.IsTileOverlapped);
   }
 }
 ```
@@ -281,6 +187,42 @@ public static class SceneBootstrapper
 }.
 ```
 .
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Manager\BootstrapSceneManager.cs
+```csharp
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using System.IO;
+
+#if UNITY_EDITOR
+using UnityEditor;
+using UnityEditor.SceneManagement;
+#endif
+
+public class BootstrapSceneManager : MonoBehaviour
+{
+  private void Start()
+  {
+#if UNITY_EDITOR
+    // Fetch the actual saved scene path from EditorPrefs
+    string previousScenePath = EditorPrefs.GetString("k_PreviousScene", "");
+    string bootstrapScenePath = EditorBuildSettings.scenes[0].path;
+
+    // If we came from a scene that is NOT the bootstrap scene, load it back
+    if (!string.IsNullOrEmpty(previousScenePath) && previousScenePath != bootstrapScenePath)
+    {
+      // This loads the test scene instantly in the Editor without needing a build setup
+      EditorSceneManager.LoadSceneInPlayMode(previousScenePath, new LoadSceneParameters(LoadSceneMode.Single));
+      return;
+    }
+#endif
+
+    SceneManager.LoadScene("Menu");
+  }
+}
+
+.
+```
+.
 FILE: C:\unity-dev\match-3-tile\Assets\Script\Manager\GameboardSceneManager.cs
 ```csharp
 using System;
@@ -296,8 +238,8 @@ public class GameboardSceneManager : MonoBehaviour
   private void Awake()
   {
     _localRepository = new GameboardLocalRepository(
-                            GameManager.Instance.GameStateModel,
-                            GameManager.Instance.LocalIOService);
+                            GlobalModelManager.Instance.GameStateModel,
+                            GlobalServiceManager.Instance.LocalIOService);
     _controller = new GameboardController(_localRepository, _view);
   }
 
@@ -308,28 +250,55 @@ public class GameboardSceneManager : MonoBehaviour
 }.
 ```
 .
-FILE: C:\unity-dev\match-3-tile\Assets\Script\Manager\GameManager.cs
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Manager\GlobalModelManager.cs
 ```csharp
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using System.IO;
-
-#if UNITY_EDITOR
-using UnityEditor;
-using UnityEditor.SceneManagement;
-#endif
-
-public class GameManager : MonoBehaviour
+public class GlobalModelManager : MonoBehaviour
 {
-  public static GameManager Instance { get; private set; } = null;
+  public static GlobalModelManager Instance { get; private set; } = null;
   public GameStateModel GameStateModel;
-  public LocalIOService LocalIOService;
-
+  // add more global model here if needed
   private void Awake()
   {
     SingletonSetup();
     GameStateModel = new GameStateModel();
+  }
+
+  private void SingletonSetup()
+  {
+    // singleton setup
+    if (Instance != null)
+    {
+      Debug.LogError("Another BootstrapManager on " + gameObject.name);
+      Destroy(gameObject);
+      return;
+    }
+
+    Instance = this;
+    DontDestroyOnLoad(gameObject);
+  }
+}
+
+.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Manager\GlobalServiceManager.cs
+```csharp
+using UnityEngine;
+using System.IO;
+
+public class GlobalServiceManager : MonoBehaviour
+{
+  public static GlobalServiceManager Instance { get; private set; } = null;
+  public LocalIOService LocalIOService;
+  public AudioService AudioService;
+  [SerializeField] private AudioSource _musicSource;
+  [SerializeField] private AudioSource _effectSource;
+  private void Awake()
+  {
+    SingletonSetup();
     LocalIOService = new LocalIOService(Path.Combine(Application.dataPath, "IO"));
+    AudioService = AudioService = new AudioService(_musicSource, _effectSource);
 
     // init
     var boardData = new GameboardData
@@ -337,13 +306,40 @@ public class GameManager : MonoBehaviour
       MaxHeight = 7,
       MaxWidth = 7,
       RackSize = 7,
-      TileToWin = 10,
+      TileToWin = 100,
       Tiles = new TileData[]
         {
-        new() { Type = 2, X = 0.5f, Y = 6.5f, Z = 1 },
-        new() { Type = 2, X = 0.5f, Y = 5.5f, Z = 1 },
-        new() { Type = 2, X = 1.5f, Y = 6.5f, Z = 1 },
-        new() { Type = 2, X = 1.5f, Y = 5.5f, Z = 1 },
+        new() { Type = 4, X = 3.0f, Y = 6.5f, Z = 100 },
+        new() { Type = 2, X = 0.5f, Y = 6.5f, Z = 100 },
+        new() { Type = 2, X = 0.5f, Y = 5.5f, Z = 100 },
+        new() { Type = 2, X = 1.5f, Y = 6.5f, Z = 100 },
+        new() { Type = 2, X = 1.5f, Y = 5.5f, Z = 100 },
+        new() { Type = 5, X = 0, Y = 7, Z = 3 },
+        new() { Type = 6, X = 0, Y = 6, Z = 3 },
+        new() { Type = 7, X = 0, Y = 5, Z = 3 },
+        new() { Type = 8, X = 1, Y = 7, Z = 3 },
+        new() { Type = 9, X = 1, Y = 6, Z = 3 },
+        new() { Type = 10, X = 1, Y = 5, Z = 3 },
+        new() { Type = 1, X = 2, Y = 7, Z = 3 },
+        new() { Type = 1, X = 2, Y = 6, Z = 3 },
+        new() { Type = 1, X = 2, Y = 5, Z = 3 },
+        new() { Type = 1, X = 0, Y = 6, Z = 2 },
+        new() { Type = 1, X = 0, Y = 5, Z = 2 },
+        new() { Type = 1, X = 1, Y = 7, Z = 2 },
+        new() { Type = 1, X = 1, Y = 6, Z = 2 },
+        new() { Type = 1, X = 1, Y = 5, Z = 2 },
+        new() { Type = 1, X = 2, Y = 7, Z = 2 },
+        new() { Type = 1, X = 2, Y = 6, Z = 2 },
+        new() { Type = 1, X = 2, Y = 5, Z = 2 },
+        new() { Type = 1, X = 0, Y = 7, Z = 1 },
+        new() { Type = 1, X = 0, Y = 6, Z = 1 },
+        new() { Type = 1, X = 0, Y = 5, Z = 1 },
+        new() { Type = 1, X = 1, Y = 7, Z = 1 },
+        new() { Type = 1, X = 1, Y = 6, Z = 1 },
+        new() { Type = 1, X = 1, Y = 5, Z = 1 },
+        new() { Type = 1, X = 2, Y = 7, Z = 1 },
+        new() { Type = 1, X = 2, Y = 6, Z = 1 },
+        new() { Type = 1, X = 2, Y = 5, Z = 1 },
         new() { Type = 1, X = 0, Y = 7, Z = 0 },
         new() { Type = 1, X = 0, Y = 6, Z = 0 },
         new() { Type = 1, X = 0, Y = 5, Z = 0 },
@@ -368,11 +364,6 @@ public class GameManager : MonoBehaviour
       }
     };
     LocalIOService.SaveJson("players/player_0.json", playerData.ToJson(true));
-
-    // scene change 
-    Debug.Log("Game Initialized!");
-
-    ExitBootstrapScene();
   }
 
   private void SingletonSetup()
@@ -388,25 +379,6 @@ public class GameManager : MonoBehaviour
     Instance = this;
     DontDestroyOnLoad(gameObject);
   }
-
-  private void ExitBootstrapScene()
-  {
-#if UNITY_EDITOR
-    // Fetch the actual saved scene path from EditorPrefs
-    string previousScenePath = EditorPrefs.GetString("k_PreviousScene", "");
-    string bootstrapScenePath = EditorBuildSettings.scenes[0].path;
-
-    // If we came from a scene that is NOT the bootstrap scene, load it back
-    if (!string.IsNullOrEmpty(previousScenePath) && previousScenePath != bootstrapScenePath)
-    {
-      // This loads the test scene instantly in the Editor without needing a build setup
-      EditorSceneManager.LoadSceneInPlayMode(previousScenePath, new LoadSceneParameters(LoadSceneMode.Single));
-      return;
-    }
-#endif
-
-    SceneManager.LoadScene("Menu");
-  }
 }
 
 .
@@ -414,20 +386,9 @@ public class GameManager : MonoBehaviour
 .
 FILE: C:\unity-dev\match-3-tile\Assets\Script\Model\GameboardModel.cs
 ```csharp
+using System;
 using System.Collections.Generic;
-
-public struct TileSelectReceipt
-{
-  public bool IsMoveLegal;
-  public List<TileData> RevealedTiles;
-  public int RackInsertionIndex;
-  public bool DidMergeOccur;
-  public List<TileData> MergedTiles;
-  public List<TileData> FinalRackResult;
-  public bool GameIsWon;
-  public bool GameIsLost;
-}
-
+using UnityEngine;
 public class GameboardModel
 {
   public int TileSoFar { get; private set; }
@@ -435,8 +396,12 @@ public class GameboardModel
   public List<TileData> TilesOnBoard { get; private set; }
   public List<TileData> TilesOnRack { get; private set; }
 
-  private readonly List<TileData> _revealedTilesCache = new List<TileData>(4);
-  private readonly List<TileData> _mergedTilesCache = new List<TileData>(3);
+  public event Action<TileData> OnTileIllegalSelected;
+  public event Action<TileData> OnTileRemovedFromBoard;
+  public event Action<TileData> OnTileRevealed;
+  public event Action<TileData, TileData> OnTileAddedToRack;
+  public event Action<List<TileData>> OnMatchCleared;
+  public event Action<bool> OnGameEnded; // true = Win, false = Loss
 
   public GameboardModel(GameboardData data)
   {
@@ -446,29 +411,45 @@ public class GameboardModel
     TilesOnRack = new List<TileData>(data.RackSize);
   }
 
-  public TileSelectReceipt SelectTile(TileData tile)
+  public void SelectTile(TileData tile)
   {
-    var receipt = new TileSelectReceipt();
     if (IsTileOverlapped(tile))
     {
-      receipt.IsMoveLegal = false;
-      return receipt;
+      OnTileIllegalSelected?.Invoke(tile);
+      return;
     }
+
     if (!TryRemoveFromBoard(tile))
     {
-      receipt.IsMoveLegal = false;
-      return receipt;
+      OnTileIllegalSelected?.Invoke(tile);
+      return;
     }
-    receipt.IsMoveLegal = true;
-    CalculateTilesRevealedBy(tile, _revealedTilesCache);
-    receipt.RevealedTiles = _revealedTilesCache;
-    receipt.RackInsertionIndex = AddToRack(tile);
-    receipt.DidMergeOccur = TryMerge(tile, _mergedTilesCache);
-    receipt.MergedTiles = _mergedTilesCache;
-    receipt.FinalRackResult = TilesOnRack;
-    receipt.GameIsLost = IsLost();
-    receipt.GameIsWon = IsWon();
-    return receipt;
+
+    OnTileRemovedFromBoard?.Invoke(tile);
+
+    List<TileData> revealed = GetTilesRevealedBy(tile);
+    foreach (TileData unblockedTile in revealed)
+    {
+      OnTileRevealed?.Invoke(unblockedTile);
+    }
+
+    OnTileAddedToRack?.Invoke(tile, AddToRack(tile));
+
+    if (TryMerge(tile, out List<TileData> matchedTiles))
+    {
+      TileSoFar += matchedTiles.Count;
+      OnMatchCleared?.Invoke(matchedTiles);
+    }
+
+    // 5. Evaluate boundaries state rules
+    if (IsWon())
+    {
+      OnGameEnded?.Invoke(true);
+    }
+    else if (IsLost())
+    {
+      OnGameEnded?.Invoke(false);
+    }
   }
 
   public bool IsTileOverlapped(TileData tile)
@@ -505,39 +486,49 @@ public class GameboardModel
     return TilesOnBoard.Remove(tile);
   }
 
-  private void CalculateTilesRevealedBy(TileData tile, List<TileData> results)
+  private List<TileData> GetTilesRevealedBy(TileData tile)
   {
-    results.Clear();
+    var revealedTiles = new List<TileData>();
     int underZ = tile.Z - 1;
     foreach (TileData other in TilesOnBoard)
     {
-      if (other.Z != underZ) continue;
+      if (other.Z >= tile.Z) continue;
       if (!IsTileOverlapped(other))
       {
-        results.Add(other);
+        revealedTiles.Add(other);
       }
     }
+    return revealedTiles;
   }
 
-  // return insertion index
-  private int AddToRack(TileData tile)
+  // Returns the tile in back (the one immediately after the inserted tile). 
+  // If there is no tile behind it, returns null.
+  private TileData AddToRack(TileData tile)
   {
     for (int i = TilesOnRack.Count - 1; i >= 0; i--)
     {
       if (TilesOnRack[i].Type == tile.Type)
       {
-        TilesOnRack.Insert(i + 1, tile);
-        return i + 1;
+        int insertIndex = i + 1;
+        TilesOnRack.Insert(insertIndex, tile);
+
+        if (insertIndex + 1 < TilesOnRack.Count)
+        {
+          return TilesOnRack[insertIndex + 1];
+        }
+        else
+        {
+          return null;
+        }
       }
     }
-
     TilesOnRack.Add(tile);
-    return TilesOnRack.Count - 1;
+    return null;
   }
 
-  private bool TryMerge(TileData tile, List<TileData> matchedTiles)
+  private bool TryMerge(TileData tile, out List<TileData> matchedTiles)
   {
-    matchedTiles.Clear();
+    matchedTiles = null;
 
     // Stop the loop 2 elements early so i + 1 and i + 2 never overshoot the list
     for (int i = 0; i < TilesOnRack.Count - 2; i++)
@@ -546,9 +537,12 @@ public class GameboardModel
        && TilesOnRack[i + 1].Type == tile.Type
        && TilesOnRack[i + 2].Type == tile.Type)
       {
-        matchedTiles.Add(TilesOnRack[i]);
-        matchedTiles.Add(TilesOnRack[i + 1]);
-        matchedTiles.Add(TilesOnRack[i + 2]);
+        matchedTiles = new List<TileData>
+            {
+                TilesOnRack[i],
+                TilesOnRack[i + 1],
+                TilesOnRack[i + 2]
+            };
 
         TilesOnRack.RemoveRange(i, 3);
         return true;
@@ -590,6 +584,92 @@ public class GameboardLocalRepository
   public void Save(GameboardModel model)
   {
 
+  }
+}.
+```
+.
+FILE: C:\unity-dev\match-3-tile\Assets\Script\Service\AudioService.cs
+```csharp
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
+using UnityEngine;
+using UnityEngine.AddressableAssets;
+using UnityEngine.ResourceManagement.AsyncOperations;
+
+public class AudioService
+{
+  private readonly AudioSource _musicSource;
+  private readonly AudioSource _effectSource;
+
+  public AudioService(AudioSource music, AudioSource effect)
+  {
+    _musicSource = music;
+    _effectSource = effect;
+  }
+
+  /// <summary>
+  /// Loads a background track via Addressables, then transitions into it smoothly using a volume fade.
+  /// </summary>
+  public async UniTask PlayMusic(string addressableKey, bool fade = true, float fadeDuration = 0.4f)
+  {
+    if (string.IsNullOrEmpty(addressableKey)) return;
+
+    // Load AudioClip from Addressables asynchronously
+    AsyncOperationHandle<AudioClip> handle = Addressables.LoadAssetAsync<AudioClip>(addressableKey);
+    AudioClip newClip = await handle.ToUniTask();
+
+    if (newClip == null)
+    {
+      Debug.LogError($"[AudioService] Failed to load background music: {addressableKey}");
+      return;
+    }
+
+    // If music is already playing, fade it out first
+    if (_musicSource.isPlaying && fade && _musicSource.clip != newClip)
+    {
+      float startVolume = _musicSource.volume;
+      for (float t = 0; t < fadeDuration; t += Time.deltaTime)
+      {
+        _musicSource.volume = Mathf.Lerp(startVolume, 0f, t / fadeDuration);
+        await UniTask.Yield();
+      }
+    }
+
+    _musicSource.clip = newClip;
+    _musicSource.loop = true;
+    _musicSource.Play();
+
+    // Fade the new track up to max volume
+    if (fade)
+    {
+      for (float t = 0; t < fadeDuration; t += Time.deltaTime)
+      {
+        _musicSource.volume = Mathf.Lerp(0f, 1f, t / fadeDuration);
+        await UniTask.Yield();
+      }
+      _musicSource.volume = 1f;
+    }
+  }
+
+  /// <summary>
+  /// Plays a sound effect via Addressables while safeguarding against rapid spamming.
+  /// </summary>
+  public void PlayEffect(string addressableKey)
+  {
+    if (string.IsNullOrEmpty(addressableKey)) return;
+
+    // Fire-and-forget Addressable asset loading callback
+    Addressables.LoadAssetAsync<AudioClip>(addressableKey).Completed += (handle) =>
+    {
+      if (handle.Status == AsyncOperationStatus.Succeeded)
+      {
+        _effectSource.PlayOneShot(handle.Result);
+      }
+      else
+      {
+        Debug.LogError($"[AudioService] Failed to play SFX: {addressableKey}");
+      }
+    };
   }
 }.
 ```
@@ -725,25 +805,34 @@ public class CameraClamp : MonoBehaviour
 .
 FILE: C:\unity-dev\match-3-tile\Assets\Script\View\GameboardView.cs
 ```csharp
+// FILE: Assets/Script/View/GameboardView.cs
 using System;
 using System.Collections.Generic;
-using DG.Tweening;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Cysharp.Threading.Tasks;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
+using UnityEngine.Tilemaps;
 
 public class GameboardView : MonoBehaviour
 {
   [SerializeField] private Camera _camera;
   [SerializeField] private TileView _tilePrefab;
+  [SerializeField] private ParticleSystem _particlePrefab;
   [SerializeField] private InputActionReference _pointAction;
   [SerializeField] private InputActionReference _clickAction;
-  [SerializeField] private Transform[] _rackTransforms;
+  [SerializeField] private Transform _rackTransform;
+
   private Dictionary<TileData, TileView> _tileMap;
+  private List<TileView> _tileRack;
   private TileView _chosenOne;
   private int _layerMask;
+  private bool _inputLock;
+
+  // The Lambda Queue Pipeline Blueprint
+  private readonly Queue<Func<UniTask>> _animationQueue = new Queue<Func<UniTask>>();
+  private bool _isProcessingQueue;
 
   public event Action<TileData> TileSelect;
 
@@ -751,6 +840,7 @@ public class GameboardView : MonoBehaviour
   {
     _layerMask = LayerMask.GetMask("Tiles");
     _tileMap = new Dictionary<TileData, TileView>();
+    _tileRack = new List<TileView>();
   }
 
   private void OnEnable()
@@ -769,10 +859,12 @@ public class GameboardView : MonoBehaviour
 
   private void OnClickChanged(InputAction.CallbackContext context)
   {
+    if (_inputLock) return;
     bool isPressed = context.ReadValueAsButton();
     Vector2 pos = _pointAction.action.ReadValue<Vector2>();
     Ray ray = _camera.ScreenPointToRay(pos);
     RaycastHit2D hit = Physics2D.GetRayIntersection(ray, Mathf.Infinity, _layerMask);
+
     if (hit.collider == null)
     {
       _chosenOne = null;
@@ -792,96 +884,217 @@ public class GameboardView : MonoBehaviour
     {
       if (tileView == _chosenOne)
       {
-        TileSelect.Invoke(tileView.Tile);
+        TileSelect?.Invoke(tileView.Tile);
       }
       _chosenOne = null;
     }
   }
 
-  public void CreateTileOnBoard(TileData tile)
+  private void EnqueueVisualStep(Func<UniTask> animTask)
   {
-    // todo use object pool
+    _animationQueue.Enqueue(animTask);
+    if (!_isProcessingQueue)
+    {
+      ProcessQueueAsync().Forget();
+    }
+  }
+
+  private async UniTaskVoid ProcessQueueAsync()
+  {
+    _isProcessingQueue = true;
+    while (_animationQueue.Count > 0)
+    {
+      Func<UniTask> visualStep = _animationQueue.Dequeue();
+      await visualStep();
+    }
+    _isProcessingQueue = false;
+  }
+
+  // --- API Methods Called Directly By Controller Event Mapping ---
+
+  public void OnTileShake(TileData tile)
+  {
+    ShakeTile(tile).Forget();
+  }
+
+  public void OnTileSelectFeedback(TileData tile)
+  {
+    PlayTileSelectSound();
+  }
+
+  public void OnTileLighten(TileData tile)
+  {
+    LightenTile(tile).Forget();
+  }
+
+  public void QueueTileMovement(TileData tile, TileData frontTile)
+  {
+    // Executes instantly, bypassing the animation queue
+    MoveTileToRack(tile, frontTile).Forget();
+  }
+
+  public void QueueMatchClear(List<TileData> tiles)
+  {
+    // Puts the merge sequence into the queue to wait its turn
+    EnqueueVisualStep(async () =>
+    {
+      PlayMergeSound();
+      await MergeTile(tiles);
+    });
+  }
+
+  public void QueueGameEnd(bool isWin)
+  {
+    EnqueueVisualStep(() =>
+    {
+      DisableBoard();
+      if (isWin) WinPanel(); else LoosePanel();
+      return UniTask.CompletedTask;
+    });
+  }
+
+  // --- Base Intermediary Direct Layout Methods ---
+
+  public void CreateBoard(IReadOnlyList<TileData> board, IReadOnlyList<TileData> rack, Func<TileData, bool> isTileOverlapped)
+  {
+    DisableBoard();
+    PlayMusic();
+    foreach (TileData tile in board) { CreateTileOnBoard(tile).Forget(); }
+    foreach (TileData tile in rack) { CreateTileOnRack(tile); }
+    foreach (TileData tile in board)
+    {
+      if (isTileOverlapped(tile)) DarkenTile(tile).Forget();
+    }
+    EnableBoard();
+  }
+
+  private UniTask CreateTileOnBoard(TileData tile)
+  {
     TileView tileView = Instantiate(_tilePrefab, new Vector3(tile.X, tile.Y, -tile.Z + tile.Y / 10), _tilePrefab.transform.rotation);
     tileView.Tile = tile;
     _tileMap.Add(tile, tileView);
     string address = $"Assets/Images/Tiles/{tile.Type}.png";
-    Addressables.LoadAssetAsync<Sprite>(address).Completed += (AsyncOperationHandle<Sprite> handle) =>
+    Addressables.LoadAssetAsync<Sprite>(address).Completed += (handle) =>
     {
-      if (handle.Status == AsyncOperationStatus.Succeeded)
-      {
-        // Assign the loaded sprite to the IconRenderer
-        tileView.IconRenderer.sprite = handle.Result;
-      }
-      else
-      {
-        Debug.LogError($"Failed to load Addressable sprite: {address}");
-      }
+      if (handle.Status == AsyncOperationStatus.Succeeded) tileView.IconRenderer.sprite = handle.Result;
     };
+    return tileView.Spawn();
   }
 
-  public void CreateTileOnRack(TileData tile, int index)
+  private void CreateTileOnRack(TileData tile) { }
+  private UniTask ShakeTile(TileData tile) => _tileMap.TryGetValue(tile, out var tv) ? tv.Shake() : UniTask.CompletedTask;
+  private UniTask LightenTile(TileData tile) => _tileMap.TryGetValue(tile, out var tv) ? tv.Lighten() : UniTask.CompletedTask;
+  private UniTask DarkenTile(TileData tile) => _tileMap.TryGetValue(tile, out var tv) ? tv.Darken() : UniTask.CompletedTask;
+
+  private UniTask MoveTileToRack(TileData tile, TileData backTile)
   {
+    if (!_tileMap.TryGetValue(tile, out TileView tv)) return UniTask.CompletedTask;
 
-  }
-
-  public UniTask ShakeTile(TileData tile)
-  {
-    TileView tv = _tileMap[tile];
-    return tv.Shake();
-  }
-
-  public UniTask LightenTile(TileData tile)
-  {
-    TileView tv = _tileMap[tile];
-    return tv.Lighten();
-  }
-
-  public UniTask DarkenTile(TileData tile)
-  {
-    TileView tv = _tileMap[tile];
-    return tv.Darken();
-  }
-
-  public UniTask MoveTileToRack(TileData tile, int index)
-  {
-    TileView tv = _tileMap[tile];
-    return tv.MoveTo(_rackTransforms[index].position);
-  }
-
-  public UniTask MergeTile(List<TileData> tiles)
-  {
-    List<UniTask> mergeTasks = new List<UniTask>();
-
-    foreach (TileData tile in tiles)
+    if (_tileRack.Count == 0)
     {
-      TileView tv = _tileMap[tile];
-      // Add to our tracker so we wait for all tiles simultaneously
-      mergeTasks.Add(tv.Die());
+      _tileRack.Add(tv);
+      return tv.MoveTo(_rackTransform.position);
     }
 
-    // Wait until ALL tiles have finished their fancy destroy animations
-    return UniTask.WhenAll(mergeTasks);
+    if (backTile == null)
+    {
+      Vector3 pos = _rackTransform.position;
+      pos.x += _tileRack.Count;
+      _tileRack.Add(tv);
+      return tv.MoveTo(pos);
+    }
+
+    for (int i = 0; i < _tileRack.Count; i++)
+    {
+      if (_tileRack[i].Tile == backTile)
+      {
+        List<UniTask> taskList = new List<UniTask>();
+
+        // Shift all existing tiles to the right
+        for (int j = i; j < _tileRack.Count; j++)
+        {
+          TileView other = _tileRack[j];
+          Vector3 pos = _rackTransform.position;
+          pos.x += j + 1; // Fixed mathematical offset
+          taskList.Add(other.MoveTo(pos));
+        }
+
+        _tileRack.Insert(i, tv);
+
+        // Slot the new tile exactly into its spot
+        Vector3 targetPos = _rackTransform.position;
+        targetPos.x += i;
+        taskList.Add(tv.MoveTo(targetPos));
+
+        return UniTask.WhenAll(taskList);
+      }
+    }
+    return UniTask.CompletedTask;
   }
 
-  public void DisableBoard()
+  private async UniTask MergeTile(List<TileData> tiles)
   {
+    foreach (TileData tile in tiles)
+    {
+      if (_tileMap.TryGetValue(tile, out TileView tv))
+      {
+        await UniTask.WaitWhile(() => tv.Moving);
+      }
+    }
 
+    List<UniTask> dieTasks = new List<UniTask>();
+    List<ParticleSystem> a = new List<ParticleSystem>();
+    // 1. Start the pop/die animations, but keep them in the rack logically for now
+    foreach (TileData tile in tiles)
+    {
+      if (_tileMap.TryGetValue(tile, out TileView tv))
+      {
+        // todo pool this stuff
+        a.Add(Instantiate(_particlePrefab, tv.transform.position, _particlePrefab.transform.rotation));
+        dieTasks.Add(tv.Die());
+      }
+    }
+
+    // 2. WAIT here for the matching tiles to finish dying
+    await UniTask.WhenAll(dieTasks);
+
+    // 3. NOW remove them from the visual rack
+    foreach (TileData tile in tiles)
+    {
+      if (_tileMap.TryGetValue(tile, out TileView tv))
+      {
+        _tileRack.Remove(tv);
+      }
+    }
+
+    // 4. Slide the remaining right-side tiles back left into the newly cleared gaps
+    List<UniTask> slideTasks = new List<UniTask>();
+    for (int i = 0; i < _tileRack.Count; i++)
+    {
+      Vector3 pos = _rackTransform.position;
+      pos.x += i;
+
+      if (_tileRack[i].transform.position != pos)
+      {
+        slideTasks.Add(_tileRack[i].MoveTo(pos));
+      }
+    }
+
+    await UniTask.WhenAll(slideTasks);
+    foreach (var item in a)
+    {
+      Destroy(item);
+    }
   }
 
-  public void EnableBoard()
-  {
+  private void DisableBoard() => _inputLock = true;
+  private void EnableBoard() => _inputLock = false;
+  private void LoosePanel() { }
+  private void WinPanel() { }
+  private void PlayTileSelectSound() => GlobalServiceManager.Instance.AudioService.PlayEffect("Assets/Audio/tap.ogg");
+  private void PlayMergeSound() => GlobalServiceManager.Instance.AudioService.PlayEffect("Assets/Audio/match.ogg");
+  private void PlayMusic() => GlobalServiceManager.Instance.AudioService.PlayEffect("Assets/Audio/bg_music.ogg");
 
-  }
-
-  public void LoosePanel()
-  {
-
-  }
-
-  public void WinPanel()
-  {
-
-  }
 }.
 ```
 .
@@ -901,14 +1114,15 @@ public class TileView : MonoBehaviour
   [HideInInspector] public TileData Tile;
 
 
+  // ideally there should be a two channel state machine here but lazy.....
+  public bool Moving { get; private set; }
+
   [Button()]
   public UniTask Shake()
   {
-    if (DOTween.IsTweening(gameObject)) return UniTask.CompletedTask;
-
+    DOTween.Kill(gameObject, true);
     // Juice: Shake position + slight rotation + a brief red error flash
     Sequence seq = DOTween.Sequence().SetTarget(gameObject);
-
     _ = seq.Append(transform.DOShakePosition(duration: 0.25f, strength: new Vector3(0.1f, 0f, 0f), vibrato: 20, randomness: 0))
        .Join(transform.DOShakeRotation(duration: 0.25f, strength: new Vector3(0, 0, 10f), vibrato: 15)) // Wiggle
        .Join(BaseRenderer.DOColor(new Color(1f, 0.5f, 0.5f), 0.125f).SetLoops(2, LoopType.Yoyo)) // Flash red and back
@@ -919,26 +1133,34 @@ public class TileView : MonoBehaviour
   [Button()]
   public UniTask Lighten()
   {
-    // Juice: Smooth fade instead of instant snap
-    UniTask baseTween = BaseRenderer.DOColor(Color.white, 0.15f).SetEase(Ease.OutQuad).ToUniTask(TweenCancelBehaviour.Complete);
-    UniTask iconTween = IconRenderer.DOColor(Color.white, 0.15f).SetEase(Ease.OutQuad).ToUniTask(TweenCancelBehaviour.Complete);
-    return UniTask.WhenAll(baseTween, iconTween);
+    DOTween.Kill(gameObject, true);
+    Sequence seq = DOTween.Sequence().SetTarget(gameObject);
+    _ = seq.Join(BaseRenderer.DOColor(Color.white, 0.15f).SetEase(Ease.OutQuad))
+           .Join(IconRenderer.DOColor(Color.white, 0.15f).SetEase(Ease.OutQuad));
+
+    return seq.ToUniTask(TweenCancelBehaviour.Complete);
   }
 
   [Button()]
   public UniTask Darken()
   {
-    // Juice: Smooth fade to dark
-    UniTask baseTween = BaseRenderer.DOColor(DarkColor, 0.15f).SetEase(Ease.OutQuad).ToUniTask(TweenCancelBehaviour.Complete);
-    UniTask iconTween = IconRenderer.DOColor(DarkColor, 0.15f).SetEase(Ease.OutQuad).ToUniTask(TweenCancelBehaviour.Complete);
-    return UniTask.WhenAll(baseTween, iconTween);
+    DOTween.Kill(gameObject, true);
+    Sequence seq = DOTween.Sequence().SetTarget(gameObject);
+    _ = seq.Join(BaseRenderer.DOColor(DarkColor, 0.15f).SetEase(Ease.OutQuad))
+           .Join(IconRenderer.DOColor(DarkColor, 0.15f).SetEase(Ease.OutQuad));
+
+    return seq.ToUniTask(TweenCancelBehaviour.Complete);
   }
+
   public UniTask MoveTo(Vector3 newPos)
   {
+    DOTween.Kill(gameObject, true);
     Sequence seq = DOTween.Sequence().SetTarget(gameObject);
+    Moving = true;
     // Juice: Move it with the snap, but also add a tiny scale "pulse" as it flies
     _ = seq.Append(transform.DOMove(newPos, 0.2f).SetEase(Ease.OutBack, 1.1f))
-             .Join(transform.DOPunchScale(new Vector3(0.15f, 0.15f, 0f), 0.18f, 1, 0.5f));
+             .Join(transform.DOPunchScale(new Vector3(0.15f, 0.15f, 0f), 0.18f, 1, 0.5f))
+             .OnComplete(() => Moving = false);
     return seq.ToUniTask(TweenCancelBehaviour.Complete);
   }
 
@@ -947,7 +1169,7 @@ public class TileView : MonoBehaviour
   [Button()]
   public UniTask MoveTest()
   {
-    Vector3 result = __moveFlipFlop ? new Vector3(1, 1) : new Vector3(3, 5);
+    Vector3 result = __moveFlipFlop ? new Vector3(2, 2) : new Vector3(4, 6);
     __moveFlipFlop = !__moveFlipFlop;
     return MoveTo(result);
   }
@@ -956,19 +1178,19 @@ public class TileView : MonoBehaviour
   [Button()]
   public UniTask Die()
   {
-    Sequence seq = DOTween.Sequence().SetTarget(gameObject);
+    DOTween.Kill(gameObject, true);
+    Sequence seq = DOTween.Sequence();
 
     // Anticipation: Scale up slightly and flash bright white
-    _ = seq.Append(transform.DOScale(1.2f, 0.1f).SetEase(Ease.OutQuad))
-       .Join(BaseRenderer.DOColor(Color.white, 0.1f)) // Ensure it's fully bright
-       .Join(IconRenderer.DOColor(Color.white, 0.1f));
+    _ = seq.Append(transform.DOScale(1.2f, 0.2f).SetEase(Ease.OutQuad))
+       .Join(BaseRenderer.DOColor(Color.white, 0.2f)) // Ensure it's fully bright
+       .Join(IconRenderer.DOColor(Color.white, 0.2f));
 
-    // The Pop: Spin, suck inward to scale 0, and float up slightly go to heaven stuff
-    _ = seq.Append(transform.DOScale(0f, 0.2f).SetEase(Ease.InBack))
-       .Join(transform.DORotate(new Vector3(0, 0, 180f), 0.2f, RotateMode.FastBeyond360).SetEase(Ease.InQuad))
-       .Join(transform.DOMoveY(transform.position.y + 0.5f, 0.2f).SetEase(Ease.InQuad)) // Float up to heaven
-       .Join(BaseRenderer.DOFade(0f, 0.15f)) // Fade out alpha
-       .Join(IconRenderer.DOFade(0f, 0.15f));
+    // The Pop: Spin, suck inward to scale 0
+    _ = seq.Append(transform.DOScale(0f, 0.4f).SetEase(Ease.InBack))
+       .Join(transform.DORotate(new Vector3(0, 0, 180f), 0.4f, RotateMode.FastBeyond360).SetEase(Ease.InQuad))
+       .Join(BaseRenderer.DOFade(0f, 0.3f)) // Fade out alpha
+       .Join(IconRenderer.DOFade(0f, 0.3f));
 
     // 3. Cleanup: Destroy the object once the sequence finishes
     _ = seq.OnComplete(() => gameObject.SetActive(false));
@@ -978,7 +1200,19 @@ public class TileView : MonoBehaviour
   [Button()]
   public UniTask Spawn()
   {
-    return UniTask.CompletedTask;
+    gameObject.SetActive(true);
+    DOTween.Kill(gameObject, true);
+    Sequence seq = DOTween.Sequence().SetTarget(gameObject);
+    transform.localScale = Vector3.zero;
+    transform.localRotation = Quaternion.identity;
+    BaseRenderer.color = Color.white;
+    IconRenderer.color = Color.white;
+    // Juice: Pop open from scale 0 to 1 with an elastic spring effect
+    _ = seq.Append(transform.DOScale(1f, 0.3f).SetEase(Ease.OutBack, 1.2f))
+           // Give it a slight quick spin while appearing
+           .Join(transform.DORotate(new Vector3(0, 0, 15f), 0.15f).SetLoops(2, LoopType.Yoyo).SetEase(Ease.InOutQuad));
+
+    return seq.ToUniTask(TweenCancelBehaviour.Complete);
   }
 }.
 ```

@@ -30,6 +30,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 257ca951e3c4c8440be44e8ac9e01845
+    m_Address: Assets/Audio/bg_music.ogg
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: 34923b5b9823b4b498d5b9852fbcac34
     m_Address: Assets/Images/Tiles/11.png
     m_ReadOnly: 0
@@ -60,6 +65,11 @@ MonoBehaviour:
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: 9a5703060df2135419f92cbf93ee4b3f
+    m_Address: Assets/Audio/match.ogg
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: a865a2100e427cb44bd007076e26dd39
     m_Address: Assets/Images/Tiles/7.png
     m_ReadOnly: 0
@@ -87,6 +97,11 @@ MonoBehaviour:
     FlaggedDuringContentUpdateRestriction: 0
   - m_GUID: d9a66abf0a5752d47be2d7dfd6dff82d
     m_Address: Assets/Images/Tiles/2.png
+    m_ReadOnly: 0
+    m_SerializedLabels: []
+    FlaggedDuringContentUpdateRestriction: 0
+  - m_GUID: ef9a74f6af549c74499beb956e62853a
+    m_Address: Assets/Audio/tap.ogg
     m_ReadOnly: 0
     m_SerializedLabels: []
     FlaggedDuringContentUpdateRestriction: 0

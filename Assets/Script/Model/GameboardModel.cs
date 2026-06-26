@@ -1,16 +1,6 @@
+using System;
 using System.Collections.Generic;
-
-public struct TileSelectReceipt
-{
-  public bool IsMoveLegal;
-  public List<TileData> RevealedTiles;
-  public int RackInsertionIndex;
-  public bool DidMergeOccur;
-  public List<TileData> MergedTiles;
-  public bool GameIsWon;
-  public bool GameIsLost;
-}
-
+using UnityEngine;
 public class GameboardModel
 {
   public int TileSoFar { get; private set; }
@@ -18,35 +8,60 @@ public class GameboardModel
   public List<TileData> TilesOnBoard { get; private set; }
   public List<TileData> TilesOnRack { get; private set; }
 
+  public event Action<TileData> OnTileIllegalSelected;
+  public event Action<TileData> OnTileRemovedFromBoard;
+  public event Action<TileData> OnTileRevealed;
+  public event Action<TileData, TileData> OnTileAddedToRack;
+  public event Action<List<TileData>> OnMatchCleared;
+  public event Action<bool> OnGameEnded; // true = Win, false = Loss
+
   public GameboardModel(GameboardData data)
   {
     TileSoFar = 0;
     GameboardData = data;
     TilesOnBoard = new List<TileData>(data.Tiles);
-    TilesOnRack = new List<TileData>();
+    TilesOnRack = new List<TileData>(data.RackSize);
   }
 
-  public TileSelectReceipt SelectTile(TileData tile)
+  public void SelectTile(TileData tile)
   {
-    var receipt = new TileSelectReceipt();
     if (IsTileOverlapped(tile))
     {
-      receipt.IsMoveLegal = false;
-      return receipt;
+      OnTileIllegalSelected?.Invoke(tile);
+      return;
     }
+
     if (!TryRemoveFromBoard(tile))
     {
-      receipt.IsMoveLegal = false;
-      return receipt;
+      OnTileIllegalSelected?.Invoke(tile);
+      return;
     }
-    receipt.IsMoveLegal = true;
-    receipt.RevealedTiles = GetTilesRevealedBy(tile);
-    receipt.RackInsertionIndex = AddToRack(tile);
-    receipt.DidMergeOccur = TryMerge(tile, out List<TileData> matchedTiles);
-    receipt.MergedTiles = matchedTiles;
-    receipt.GameIsLost = IsLost();
-    receipt.GameIsWon = IsWon();
-    return receipt;
+
+    OnTileRemovedFromBoard?.Invoke(tile);
+
+    List<TileData> revealed = GetTilesRevealedBy(tile);
+    foreach (TileData unblockedTile in revealed)
+    {
+      OnTileRevealed?.Invoke(unblockedTile);
+    }
+
+    OnTileAddedToRack?.Invoke(tile, AddToRack(tile));
+
+    if (TryMerge(tile, out List<TileData> matchedTiles))
+    {
+      TileSoFar += matchedTiles.Count;
+      OnMatchCleared?.Invoke(matchedTiles);
+    }
+
+    // 5. Evaluate boundaries state rules
+    if (IsWon())
+    {
+      OnGameEnded?.Invoke(true);
+    }
+    else if (IsLost())
+    {
+      OnGameEnded?.Invoke(false);
+    }
   }
 
   public bool IsTileOverlapped(TileData tile)
@@ -83,28 +98,13 @@ public class GameboardModel
     return TilesOnBoard.Remove(tile);
   }
 
-  private List<TileData> GetTilesOverlappedBy(TileData tile)
-  {
-    var overlappedTiles = new List<TileData>();
-    int underZ = tile.Z - 1;
-    foreach (TileData other in TilesOnBoard)
-    {
-      if (other.Z != underZ) continue;
-      if (DoTilesIntersect(tile, other))
-      {
-        overlappedTiles.Add(other);
-      }
-    }
-    return overlappedTiles;
-  }
-
   private List<TileData> GetTilesRevealedBy(TileData tile)
   {
     var revealedTiles = new List<TileData>();
     int underZ = tile.Z - 1;
     foreach (TileData other in TilesOnBoard)
     {
-      if (other.Z != underZ) continue;
+      if (other.Z >= tile.Z) continue;
       if (!IsTileOverlapped(other))
       {
         revealedTiles.Add(other);
@@ -113,20 +113,29 @@ public class GameboardModel
     return revealedTiles;
   }
 
-  // return insertion index
-  private int AddToRack(TileData tile)
+  // Returns the tile in back (the one immediately after the inserted tile). 
+  // If there is no tile behind it, returns null.
+  private TileData AddToRack(TileData tile)
   {
     for (int i = TilesOnRack.Count - 1; i >= 0; i--)
     {
       if (TilesOnRack[i].Type == tile.Type)
       {
-        TilesOnRack.Insert(i + 1, tile);
-        return i + 1;
+        int insertIndex = i + 1;
+        TilesOnRack.Insert(insertIndex, tile);
+
+        if (insertIndex + 1 < TilesOnRack.Count)
+        {
+          return TilesOnRack[insertIndex + 1];
+        }
+        else
+        {
+          return null;
+        }
       }
     }
-
     TilesOnRack.Add(tile);
-    return TilesOnRack.Count - 1;
+    return null;
   }
 
   private bool TryMerge(TileData tile, out List<TileData> matchedTiles)
