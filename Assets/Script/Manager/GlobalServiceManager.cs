@@ -8,12 +8,13 @@ public class GlobalServiceManager : MonoBehaviour
   public AudioService AudioService;
   [SerializeField] private AudioSource _musicSource;
   [SerializeField] private AudioSource _effectSource;
+  public ObjectPoolService ObjectPoolService;
   private void Awake()
   {
     SingletonSetup();
     LocalIOService = new LocalIOService(Path.Combine(Application.dataPath, "IO"));
-    AudioService = AudioService = new AudioService(_musicSource, _effectSource);
-
+    AudioService = new AudioService(_musicSource, _effectSource);
+    ObjectPoolService = new ObjectPoolService();
     // init
     var boardData = new GameboardData
     {

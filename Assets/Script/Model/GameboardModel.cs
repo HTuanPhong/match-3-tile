@@ -25,6 +25,11 @@ public class GameboardModel
 
   public void SelectTile(TileData tile)
   {
+    if (IsLost())
+    {
+      OnTileIllegalSelected?.Invoke(tile);
+      return;
+    }
     if (IsTileOverlapped(tile))
     {
       OnTileIllegalSelected?.Invoke(tile);

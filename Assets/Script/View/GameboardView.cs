@@ -6,7 +6,6 @@ using UnityEngine.InputSystem;
 using Cysharp.Threading.Tasks;
 using UnityEngine.AddressableAssets;
 using UnityEngine.ResourceManagement.AsyncOperations;
-using UnityEngine.Tilemaps;
 
 public class GameboardView : MonoBehaviour
 {
@@ -52,7 +51,7 @@ public class GameboardView : MonoBehaviour
 
   private void OnClickChanged(InputAction.CallbackContext context)
   {
-    if (_inputLock) return;
+    // if (_inputLock) return;
     bool isPressed = context.ReadValueAsButton();
     Vector2 pos = _pointAction.action.ReadValue<Vector2>();
     Ray ray = _camera.ScreenPointToRay(pos);
@@ -163,7 +162,11 @@ public class GameboardView : MonoBehaviour
 
   private UniTask CreateTileOnBoard(TileData tile)
   {
-    TileView tileView = Instantiate(_tilePrefab, new Vector3(tile.X, tile.Y, -tile.Z + tile.Y / 10), _tilePrefab.transform.rotation);
+    TileView tileView = GlobalServiceManager.Instance.ObjectPoolService.Get(
+        _tilePrefab,
+        new Vector3(tile.X, tile.Y, -tile.Z + tile.Y / 10),
+        _tilePrefab.transform.rotation
+    );
     tileView.Tile = tile;
     _tileMap.Add(tile, tileView);
     string address = $"Assets/Images/Tiles/{tile.Type}.png";
@@ -236,14 +239,16 @@ public class GameboardView : MonoBehaviour
     }
 
     List<UniTask> dieTasks = new List<UniTask>();
-    List<ParticleSystem> a = new List<ParticleSystem>();
     // 1. Start the pop/die animations, but keep them in the rack logically for now
     foreach (TileData tile in tiles)
     {
       if (_tileMap.TryGetValue(tile, out TileView tv))
       {
-        // todo pool this stuff
-        a.Add(Instantiate(_particlePrefab, tv.transform.position, _particlePrefab.transform.rotation));
+        GlobalServiceManager.Instance.ObjectPoolService.PlayParticleAndForget(
+                _particlePrefab,
+                tv.transform.position,
+                _particlePrefab.transform.rotation
+            );
         dieTasks.Add(tv.Die());
       }
     }
@@ -257,6 +262,7 @@ public class GameboardView : MonoBehaviour
       if (_tileMap.TryGetValue(tile, out TileView tv))
       {
         _tileRack.Remove(tv);
+        GlobalServiceManager.Instance.ObjectPoolService.Release(tv);
       }
     }
 
@@ -274,10 +280,6 @@ public class GameboardView : MonoBehaviour
     }
 
     await UniTask.WhenAll(slideTasks);
-    foreach (var item in a)
-    {
-      Destroy(item);
-    }
   }
 
   private void DisableBoard() => _inputLock = true;
