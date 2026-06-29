@@ -31,8 +31,8 @@ public class ObjectPoolService
   {
     ObjectPool<T> pool = GetOrCreatePool(prefab);
     T instance = pool.Get();
-
-    instance.transform.SetParent(parent);
+    Transform targetParent = parent != null ? parent : _poolRoot;
+    instance.transform.SetParent(targetParent);
     instance.transform.SetPositionAndRotation(position, rotation);
 
     return instance;
@@ -119,13 +119,13 @@ public class ObjectPoolService
 
   private async UniTaskVoid PlayParticleAsyncInternal(ParticleSystem prefab, Vector3 position, Quaternion rotation, Transform parent)
   {
-    // 1. Fetch from pool and set placement
+    // Fetch from pool and set placement
     ParticleSystem instance = Get(prefab, position, rotation, parent);
 
-    // 2. Play the particle system
+    // Play the particle system
     instance.Play(withChildren: true);
 
-    // 3. Keep tracking in the background until it completely runs out of active particles
+    // Keep tracking in the background until it completely runs out of active particles
     // 'true' ensures it checks all nested child particle paths as well
     await UniTask.WaitWhile(() => instance != null && instance.IsAlive(withChildren: true));
 

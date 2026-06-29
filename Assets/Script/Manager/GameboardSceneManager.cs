@@ -3,7 +3,6 @@ using UnityEngine;
 
 public class GameboardSceneManager : MonoBehaviour
 {
-  private GameboardModel _model;
   [SerializeField] private GameboardView _view;
   private GameboardController _controller;
   private GameboardLocalRepository _localRepository;

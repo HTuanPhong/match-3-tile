@@ -1,20 +1,29 @@
-// FILE: Assets/Script/View/GameboardView.cs
 using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using Cysharp.Threading.Tasks;
-using UnityEngine.AddressableAssets;
-using UnityEngine.ResourceManagement.AsyncOperations;
 
 public class GameboardView : MonoBehaviour
 {
+  [Header("References")]
   [SerializeField] private Camera _camera;
   [SerializeField] private TileView _tilePrefab;
   [SerializeField] private ParticleSystem _particlePrefab;
+  [SerializeField] private Transform _rackTransform;
+
+  [Header("Input")]
   [SerializeField] private InputActionReference _pointAction;
   [SerializeField] private InputActionReference _clickAction;
-  [SerializeField] private Transform _rackTransform;
+
+  [Header("Audio Clips")]
+  [SerializeField] private AudioClip _tapSound;
+  [SerializeField] private AudioClip _mergeSound;
+  [SerializeField] private AudioClip _bgmSound;
+
+  [Header("Icons")]
+  [SerializeField] private Sprite[] _sprites;
+
 
   private Dictionary<TileData, TileView> _tileMap;
   private List<TileView> _tileRack;
@@ -22,7 +31,6 @@ public class GameboardView : MonoBehaviour
   private int _layerMask;
   private bool _inputLock;
 
-  // The Lambda Queue Pipeline Blueprint
   private readonly Queue<Func<UniTask>> _animationQueue = new Queue<Func<UniTask>>();
   private bool _isProcessingQueue;
 
@@ -47,22 +55,26 @@ public class GameboardView : MonoBehaviour
     _clickAction.action.performed -= OnClickChanged;
     _clickAction.action.Disable();
     _pointAction.action.Disable();
+    foreach (TileView item in _tileMap.Values)
+    {
+      GlobalServiceManager.Instance.ObjectPoolService.Release(item);
+    }
   }
 
   private void OnClickChanged(InputAction.CallbackContext context)
   {
     // if (_inputLock) return;
     bool isPressed = context.ReadValueAsButton();
-    Vector2 pos = _pointAction.action.ReadValue<Vector2>();
-    Ray ray = _camera.ScreenPointToRay(pos);
-    RaycastHit2D hit = Physics2D.GetRayIntersection(ray, Mathf.Infinity, _layerMask);
+    Vector2 screenPos = _pointAction.action.ReadValue<Vector2>();
+    Vector2 worldPos = Camera.main.ScreenToWorldPoint(screenPos);
+    Collider2D collider = Physics2D.OverlapPoint(worldPos, _layerMask);
 
-    if (hit.collider == null)
+    if (collider == null)
     {
       _chosenOne = null;
       return;
     }
-    TileView tileView = hit.collider.GetComponent<TileView>();
+    TileView tileView = collider.GetComponent<TileView>();
     if (tileView == null)
     {
       _chosenOne = null;
@@ -169,11 +181,7 @@ public class GameboardView : MonoBehaviour
     );
     tileView.Tile = tile;
     _tileMap.Add(tile, tileView);
-    string address = $"Assets/Images/Tiles/{tile.Type}.png";
-    Addressables.LoadAssetAsync<Sprite>(address).Completed += (handle) =>
-    {
-      if (handle.Status == AsyncOperationStatus.Succeeded) tileView.IconRenderer.sprite = handle.Result;
-    };
+    tileView.IconRenderer.sprite = _sprites[tile.Type];
     return tileView.Spawn();
   }
 
@@ -286,8 +294,8 @@ public class GameboardView : MonoBehaviour
   private void EnableBoard() => _inputLock = false;
   private void LoosePanel() { }
   private void WinPanel() { }
-  private void PlayTileSelectSound() => GlobalServiceManager.Instance.AudioService.PlayEffect("Assets/Audio/tap.ogg");
-  private void PlayMergeSound() => GlobalServiceManager.Instance.AudioService.PlayEffect("Assets/Audio/match.ogg");
-  private void PlayMusic() => GlobalServiceManager.Instance.AudioService.PlayEffect("Assets/Audio/bg_music.ogg");
+  private void PlayTileSelectSound() => GlobalServiceManager.Instance.AudioService.PlayEffect(_tapSound);
+  private void PlayMergeSound() => GlobalServiceManager.Instance.AudioService.PlayEffect(_mergeSound);
+  private void PlayMusic() => GlobalServiceManager.Instance.AudioService.PlayEffect(_bgmSound);
 
 }
